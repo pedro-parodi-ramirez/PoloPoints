@@ -5,8 +5,8 @@
 #define DATA_FRAME_COLUMNS 2    // Columnas de la matriz dataFrame a enviar a placa controladora (2 columnas -> pares [key, value])
 #define DECREASE 0
 #define INCREASE 1
-#define TEAM1 0
-#define TEAM2 1
+#define TEAM_1 0
+#define TEAM_2 1
 
 /***************************************************************************/
 /****************************** DATA TYPES *********************************/
@@ -58,14 +58,20 @@ void setup() {
   delay(100);
 }
 
-/*int genChecksum(char dataFrame[DATA_FRAME_ROWS][DATA_FRAME_COLUMNS]) {
+char genChecksum(char dataFrame[DATA_FRAME_ROWS][DATA_FRAME_COLUMNS]) {
   int checksum = 0, i;
   // Para el checksum, se suman los bytes de dataFrame desde el byte COMMAND hastas DATA_END inclusive
-  for(i=COMMAND; i <= DATA_END, i++){
-    checksum = dataFrame[i][1]  // Los datos se encuentran en la 2da columna -> pares [key, value]
+  for(i=COMMAND; i <= DATA_END; i++){
+    checksum += dataFrame[i][1];  // Los datos se encuentran en la 2da columna -> pares [key, value]
   }
-  return (checksum & 0xFF); // el checksum es byte menos significativo
-}*/
+  return (char)(checksum & 0xFF); // el checksum es byte menos significativo
+}
+
+void setDataFrame(scoreboard_t* scoreboard, char dataFrame[DATA_FRAME_ROWS][DATA_FRAME_COLUMNS]){
+  dataFrame[SCORE_TEAM1_DECENA][1] = (char)(scoreboard->SCORE[TEAM_1] / 10 + '0');
+  dataFrame[SCORE_TEAM1_UNIDAD][1] = (char)(scoreboard->SCORE[TEAM_1] % 10 + '0');
+  dataFrame[CHECKSUM][1] = genChecksum(dataFrame);
+}
 
 unsigned int setBufferTx(char* bufferTx, char dataFrame[DATA_FRAME_ROWS][DATA_FRAME_COLUMNS]) {
   char i = 0;
@@ -141,16 +147,11 @@ void loop() {
         Serial.println(main_state);
         break;
       case INC_SCORE_T1:
-        updateScore(INCREASE, TEAM1, &scoreboard);
-
-        Serial.print("Score TEAM 1: ");
-        Serial.println(scoreboard.SCORE[TEAM1]);
-        Serial.print("Score TEAM 2: ");
-        Serial.println(scoreboard.SCORE[TEAM2]);
-
+        updateScore(INCREASE, TEAM_1, &scoreboard);
         main_state = UPDATE_BOARD;
         break;
       case UPDATE_BOARD:
+        setDataFrame(&scoreboard, dataFrame);
         SCOREBOARD_CMD_BYTES = setBufferTx((char*)bufferTx, dataFrame);  // setear la trama de datos a enviar
         Serial.write(bufferTx, SCOREBOARD_CMD_BYTES);                    // enviar data
         main_state = WAITING_COMMAND;
