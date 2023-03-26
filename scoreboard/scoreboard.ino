@@ -1,7 +1,7 @@
 /***************************************************************************/
 /******************************** DEFINES **********************************/
 
-#define DATA_FRAME_ROWS 13      // Filas de la matriz dataFrame a enviar a placa controladora. Filas -> header, comando, dato, ...
+#define DATA_FRAME_ROWS 15      // Filas de la matriz dataFrame a enviar a placa controladora. Filas -> header, comando, dato, ...
 #define DATA_FRAME_COLUMNS 2    // Columnas de la matriz dataFrame a enviar a placa controladora (2 columnas -> pares [key, value])
 #define DECREASE 0
 #define INCREASE 1
@@ -44,6 +44,8 @@ enum data_frame_keys_t
     RESERVED_3,
     SCORE_TEAM1_DECENA,
     SCORE_TEAM1_UNIDAD,
+    SCORE_TEAM2_DECENA,
+    SCORE_TEAM2_UNIDAD,
     DATA_END,
     CHECKSUM,
     FRAME_END
@@ -70,6 +72,8 @@ char genChecksum(char dataFrame[DATA_FRAME_ROWS][DATA_FRAME_COLUMNS]) {
 void setDataFrame(scoreboard_t* scoreboard, char dataFrame[DATA_FRAME_ROWS][DATA_FRAME_COLUMNS]){
   dataFrame[SCORE_TEAM1_DECENA][1] = (char)(scoreboard->SCORE[TEAM_1] / 10 + '0');
   dataFrame[SCORE_TEAM1_UNIDAD][1] = (char)(scoreboard->SCORE[TEAM_1] % 10 + '0');
+  dataFrame[SCORE_TEAM2_DECENA][1] = (char)(scoreboard->SCORE[TEAM_2] / 10 + '0');
+  dataFrame[SCORE_TEAM2_UNIDAD][1] = (char)(scoreboard->SCORE[TEAM_2] % 10 + '0');
   dataFrame[CHECKSUM][1] = genChecksum(dataFrame);
 }
 
@@ -125,8 +129,10 @@ void loop() {
     { RESERVED_3, 0x00 },
     { SCORE_TEAM1_DECENA, 0x30 },
     { SCORE_TEAM1_UNIDAD, 0x30 },
+    { SCORE_TEAM2_DECENA, 0x30 },
+    { SCORE_TEAM2_UNIDAD, 0x30 },
     { DATA_END, 0xFF },
-    { CHECKSUM, 0x3E },
+    { CHECKSUM, 0x9D },
     { FRAME_END, 0x7F },
   };
   unsigned int SCOREBOARD_CMD_BYTES = 0;
@@ -150,6 +156,18 @@ void loop() {
         updateScore(INCREASE, TEAM_1, &scoreboard);
         main_state = UPDATE_BOARD;
         break;
+      case INC_SCORE_T2:
+        updateScore(INCREASE, TEAM_2, &scoreboard);
+        main_state = UPDATE_BOARD;
+        break;
+      case DEC_SCORE_T1:
+        updateScore(DECREASE, TEAM_1, &scoreboard);
+        main_state = UPDATE_BOARD;
+        break;
+      case DEC_SCORE_T2:
+        updateScore(DECREASE, TEAM_2, &scoreboard);
+        main_state = UPDATE_BOARD;
+        break;
       case UPDATE_BOARD:
         setDataFrame(&scoreboard, dataFrame);
         SCOREBOARD_CMD_BYTES = setBufferTx((char*)bufferTx, dataFrame);  // setear la trama de datos a enviar
@@ -158,6 +176,7 @@ void loop() {
         break;
       case INIT:
         /******************************* INIT BOARD ********************************/
+        setDataFrame(&scoreboard, dataFrame);
         SCOREBOARD_CMD_BYTES = setBufferTx((char*)bufferTx, dataFrame);  // setear la trama de datos a enviar
         Serial.write(bufferTx, SCOREBOARD_CMD_BYTES);                      // enviar data
         main_state = WAITING_COMMAND;
