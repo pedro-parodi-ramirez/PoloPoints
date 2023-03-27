@@ -3,19 +3,26 @@
 
 #define DATA_FRAME_ROWS 15      // Filas de la matriz dataFrame a enviar a placa controladora. Filas -> header, comando, dato, ...
 #define DATA_FRAME_COLUMNS 2    // Columnas de la matriz dataFrame a enviar a placa controladora (2 columnas -> pares [key, value])
+#define VALUE 1
 #define DECREASE 0
 #define INCREASE 1
 #define TEAM_1 0
 #define TEAM_2 1
+#define SECOND_IN_MICROS 1000000
+
+/***************************************************************************/
+/********************************* TIMER ***********************************/
+
+hw_timer_t *Timer0_Cfg = NULL;
 
 /***************************************************************************/
 /****************************** DATA TYPES *********************************/
 
 struct scoreboard_t{
-  int SCORE[2] = { 0, 0 };
-} scoreboard;
+  int SCORE[2] = { 00, 00 };
+};
 
-enum main_states_t
+enum main_state_t
 {
   WAITING_COMMAND,
   UPDATE_BOARD,
@@ -26,30 +33,40 @@ enum main_states_t
   INC_MATCH,
   DEC_MATCH,
   STOP_TIMER,
+  UPDATE_TIMER,
   START_TIMER,
   RESET_TIMER,
   RESET_ALL,
-  INIT
+  INIT,
+  NOT_KNOWN
 } main_state = INIT;
 
-enum data_frame_keys_t
+typedef enum
 {
-    HEADER,
-    COMMAND,
-    ADDRESS,
-    RESPONSE,
-    RESERVED_1,
-    FLASH,
-    RESERVED_2,
-    RESERVED_3,
-    SCORE_TEAM1_DECENA,
-    SCORE_TEAM1_UNIDAD,
-    SCORE_TEAM2_DECENA,
-    SCORE_TEAM2_UNIDAD,
-    DATA_END,
-    CHECKSUM,
-    FRAME_END
-};
+  HEADER,
+  COMMAND,
+  ADDRESS,
+  RESPONSE,
+  RESERVED_1,
+  FLASH,
+  RESERVED_2,
+  RESERVED_3,
+  SCORE_TEAM1_DECENA,
+  SCORE_TEAM1_UNIDAD,
+  SCORE_TEAM2_DECENA,
+  SCORE_TEAM2_UNIDAD,
+  DATA_END,
+  CHECKSUM,
+  FRAME_END
+} data_frame_keys;
+
+/***************************************************************************/
+/****************************** IRQ_HANDLERS *******************************/
+void IRAM_ATTR Timer0_ISR()
+{
+  main_state = UPDATE_TIMER;
+  Serial.println("Paso un segundo ...");
+}
 
 /***************************************************************************/
 /******************************** FUNCTIONS ********************************/
@@ -57,6 +74,11 @@ enum data_frame_keys_t
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(9600);
+  Timer0_Cfg = timerBegin(0, 80, true);
+  timerAttachInterrupt(Timer0_Cfg, &Timer0_ISR, true);
+  timerAlarmWrite(Timer0_Cfg, SECOND_IN_MICROS, true);
+  timerAlarmEnable(Timer0_Cfg);
+  timerStart(Timer0_Cfg);
   delay(100);
 }
 
@@ -64,30 +86,30 @@ char genChecksum(char dataFrame[DATA_FRAME_ROWS][DATA_FRAME_COLUMNS]) {
   int checksum = 0, i;
   // Para el checksum, se suman los bytes de dataFrame desde el byte COMMAND hastas DATA_END inclusive
   for(i=COMMAND; i <= DATA_END; i++){
-    checksum += dataFrame[i][1];  // Los datos se encuentran en la 2da columna -> pares [key, value]
+    checksum += dataFrame[i][VALUE];  // Los datos se encuentran en la 2da columna -> pares [key, value]
   }
   return (char)(checksum & 0xFF); // el checksum es byte menos significativo
 }
 
 void setDataFrame(scoreboard_t* scoreboard, char dataFrame[DATA_FRAME_ROWS][DATA_FRAME_COLUMNS]){
-  dataFrame[SCORE_TEAM1_DECENA][1] = (char)(scoreboard->SCORE[TEAM_1] / 10 + '0');
-  dataFrame[SCORE_TEAM1_UNIDAD][1] = (char)(scoreboard->SCORE[TEAM_1] % 10 + '0');
-  dataFrame[SCORE_TEAM2_DECENA][1] = (char)(scoreboard->SCORE[TEAM_2] / 10 + '0');
-  dataFrame[SCORE_TEAM2_UNIDAD][1] = (char)(scoreboard->SCORE[TEAM_2] % 10 + '0');
-  dataFrame[CHECKSUM][1] = genChecksum(dataFrame);
+  dataFrame[SCORE_TEAM1_DECENA][VALUE] = (char)(scoreboard->SCORE[TEAM_1] / 10 + '0');
+  dataFrame[SCORE_TEAM1_UNIDAD][VALUE] = (char)(scoreboard->SCORE[TEAM_1] % 10 + '0');
+  dataFrame[SCORE_TEAM2_DECENA][VALUE] = (char)(scoreboard->SCORE[TEAM_2] / 10 + '0');
+  dataFrame[SCORE_TEAM2_UNIDAD][VALUE] = (char)(scoreboard->SCORE[TEAM_2] % 10 + '0');
+  dataFrame[CHECKSUM][VALUE] = genChecksum(dataFrame);
 }
 
 unsigned int setBufferTx(char* bufferTx, char dataFrame[DATA_FRAME_ROWS][DATA_FRAME_COLUMNS]) {
   char i = 0;
   unsigned int bytes_to_transfer = 0;
   for(i=0; i < DATA_FRAME_ROWS; i++){
-    bufferTx[i] = dataFrame[i][1];  // Los datos se encuentran en la 2da columna -> pares [key, value]
+    bufferTx[i] = dataFrame[i][VALUE];  // Los datos se encuentran en la 2da columna -> pares [key, value]
     bytes_to_transfer++;
   }
   return bytes_to_transfer;
 }
 
-main_states_t processCommand(String bufferRx){
+main_state_t processCommand(String bufferRx){
   String command = bufferRx;
   if(command == "INC_SCORE_T1"){ return INC_SCORE_T1; }
   else if(command == "INC_SCORE_T2"){ return INC_SCORE_T2; }
@@ -100,7 +122,7 @@ main_states_t processCommand(String bufferRx){
   else if(command == "RESET_TIMER"){ return RESET_TIMER; }
   else if(command == "RESET_ALL"){ return RESET_ALL; }
   else{
-    return WAITING_COMMAND;
+    return NOT_KNOWN;
   }
 }
 
@@ -113,10 +135,11 @@ void updateScore(int increaseScore, int team, scoreboard_t* scoreboard){
   }
 }
 
-/* ----------------------------------------------------------------------------------------------------------------------------------------------------- */
+/************************************************************ INFINITE LOOP ************************************************************/
 void loop() {
   String bufferRx;
   char bufferTx[50];
+  scoreboard_t scoreboard;
 
   char dataFrame[DATA_FRAME_ROWS][DATA_FRAME_COLUMNS] = {
     { HEADER, 0x7F },
@@ -141,16 +164,15 @@ void loop() {
   while(1){
     switch(main_state){
       case WAITING_COMMAND:
-        /************************** WAIT FOR NEW COMMANDS **************************/
-        Serial.println("Waiting command...");
-        while (Serial.available() == 0) {}  // a la espera de datos por uart
-        bufferRx = Serial.readString();
-        bufferRx.trim();
-        main_state = processCommand(bufferRx);
-        Serial.print(bufferRx);             // enviar a controlador LED
-        
-        Serial.print("\nReceived: ");
-        Serial.println(main_state);
+        /************************** WAIT FOR NEW COMMAND **************************/
+        // Serial.println("\nWaiting command...");
+        // while (Serial.available() == 0) {}  // a la espera de datos por uart
+        // bufferRx = Serial.readString();
+        // Serial.print("Received: ");
+        // Serial.println(bufferRx);
+        // bufferRx.trim();
+        // main_state = processCommand(bufferRx);
+        // Serial.print(bufferRx);             // enviar a controlador LED
         break;
       case INC_SCORE_T1:
         updateScore(INCREASE, TEAM_1, &scoreboard);
@@ -168,6 +190,10 @@ void loop() {
         updateScore(DECREASE, TEAM_2, &scoreboard);
         main_state = UPDATE_BOARD;
         break;
+      case UPDATE_TIMER:
+        updateScore(INCREASE, TEAM_1, &scoreboard);
+        main_state = UPDATE_BOARD;
+        break;        
       case UPDATE_BOARD:
         setDataFrame(&scoreboard, dataFrame);
         SCOREBOARD_CMD_BYTES = setBufferTx((char*)bufferTx, dataFrame);  // setear la trama de datos a enviar
@@ -178,7 +204,11 @@ void loop() {
         /******************************* INIT BOARD ********************************/
         setDataFrame(&scoreboard, dataFrame);
         SCOREBOARD_CMD_BYTES = setBufferTx((char*)bufferTx, dataFrame);  // setear la trama de datos a enviar
-        Serial.write(bufferTx, SCOREBOARD_CMD_BYTES);                      // enviar data
+        Serial.write(bufferTx, SCOREBOARD_CMD_BYTES);                    // enviar data
+        main_state = WAITING_COMMAND;
+        break;
+      case NOT_KNOWN:
+        Serial.println("Error: not known command");
         main_state = WAITING_COMMAND;
         break;
       default:
