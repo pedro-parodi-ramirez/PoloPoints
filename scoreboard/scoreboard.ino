@@ -30,20 +30,27 @@ struct scoreboard_t{
 enum main_state_t
 {
   WAITING_COMMAND,
+  PROCESS_COMMAND,
+  EXECUTE_COMMAND,
+  UPDATE_TIMER,
   UPDATE_BOARD,
+  INIT,
+  ERROR
+} main_state = INIT;
+
+enum command_t
+{
   INC_SCORE_T1,
   INC_SCORE_T2,
   DEC_SCORE_T1,
   DEC_SCORE_T2,
   INC_MATCH,
   DEC_MATCH,
-  UPDATE_TIMER,
   START_TIMER,
   STOP_TIMER,
   RESET_ALL,
-  INIT,
-  NOT_KNOWN
-} main_state = INIT;
+  NOTHING_TO_DO
+};
 
 typedef enum
 {
@@ -118,7 +125,7 @@ unsigned int setBufferTx(char* bufferTx, char dataFrame[DATA_FRAME_ROWS][DATA_FR
   return bytes_to_transfer;
 }
 
-main_state_t processCommand(String bufferRx){
+command_t processCommand(String bufferRx){
   String command = bufferRx;
   if(command == "INC_SCORE_T1"){ return INC_SCORE_T1; }
   else if(command == "INC_SCORE_T2"){ return INC_SCORE_T2; }
@@ -129,9 +136,7 @@ main_state_t processCommand(String bufferRx){
   else if(command == "START_TIMER"){ return START_TIMER; }
   else if(command == "STOP_TIMER"){ return STOP_TIMER; }
   else if(command == "RESET_ALL"){ return RESET_ALL; }
-  else{
-    return NOT_KNOWN;
-  }
+  else{ return NOTHING_TO_DO; }
 }
 
 void updateTimer(scoreboard_t* scoreboard){
@@ -171,6 +176,7 @@ void loop() {
   String bufferRx;
   char bufferTx[50];
   scoreboard_t scoreboard;
+  command_t command = NOTHING_TO_DO;
 
   char dataFrame[DATA_FRAME_ROWS][DATA_FRAME_COLUMNS] = {
     { HEADER, 0x7F },
@@ -193,65 +199,75 @@ void loop() {
     { CHECKSUM, 0x9D },
     { FRAME_END, 0x7F },
   };
-  unsigned int SCOREBOARD_CMD_BYTES = 0;
+  unsigned int DATA_FRAME_BYTES = 0;
 
   /****************************** STATE MACHINE LOOP *******************************/
   while(1){
     switch(main_state){
       case WAITING_COMMAND:
-        /************************** WAIT FOR NEW COMMAND **************************/
         // A la espera de datos por UART
         if (Serial.available() > 0) {
           bufferRx = Serial.readString();
           Serial.print("Received: ");
           Serial.println(bufferRx);
           bufferRx.trim();
-          main_state = processCommand(bufferRx);
-          Serial.print(bufferRx); // enviar a controlador LED
+          main_state = PROCESS_COMMAND;
         }
+        break;      
+      case PROCESS_COMMAND:
+        command = processCommand(bufferRx);
+        if(command != NOTHING_TO_DO){ main_state = EXECUTE_COMMAND; }
+        else{ main_state = ERROR; }
         break;
-      case INC_SCORE_T1:
-        updateScore(INCREASE, TEAM_1, &scoreboard);
-        main_state = UPDATE_BOARD;
-        break;
-      case INC_SCORE_T2:
-        updateScore(INCREASE, TEAM_2, &scoreboard);
-        main_state = UPDATE_BOARD;
-        break;
-      case DEC_SCORE_T1:
-        updateScore(DECREASE, TEAM_1, &scoreboard);
-        main_state = UPDATE_BOARD;
-        break;
-      case DEC_SCORE_T2:
-        updateScore(DECREASE, TEAM_2, &scoreboard);
-        main_state = UPDATE_BOARD;
-        break;
+      case EXECUTE_COMMAND:
+        switch(command){
+          case INC_SCORE_T1:
+            updateScore(INCREASE, TEAM_1, &scoreboard);
+            main_state = UPDATE_BOARD;
+            break;
+          case INC_SCORE_T2:
+            updateScore(INCREASE, TEAM_2, &scoreboard);
+            main_state = UPDATE_BOARD;
+            break;
+          case DEC_SCORE_T1:
+            updateScore(DECREASE, TEAM_1, &scoreboard);
+            main_state = UPDATE_BOARD;
+            break;
+          case DEC_SCORE_T2:
+            updateScore(DECREASE, TEAM_2, &scoreboard);
+            main_state = UPDATE_BOARD;
+            break;
+          case START_TIMER:
+            startTimer();
+            main_state = WAITING_COMMAND;
+            break;
+          case STOP_TIMER:
+            stopTimer();
+            main_state = WAITING_COMMAND;
+            break;
+          default:
+            command = NOTHING_TO_DO;
+            break;
+        }
+        command = NOTHING_TO_DO;
       case UPDATE_TIMER:
         updateTimer(&scoreboard);
         main_state = UPDATE_BOARD;
         break;
-      case START_TIMER:
-        startTimer();
-        main_state = WAITING_COMMAND;
-        break;
-      case STOP_TIMER:
-        stopTimer();
-        main_state = WAITING_COMMAND;
-        break;
       case UPDATE_BOARD:
-        setDataFrame(&scoreboard, dataFrame);
-        SCOREBOARD_CMD_BYTES = setBufferTx((char*)bufferTx, dataFrame);  // setear la trama de datos a enviar
-        Serial.write(bufferTx, SCOREBOARD_CMD_BYTES);                    // enviar data
+        setDataFrame(&scoreboard, dataFrame);                       // setear la trama de datos a enviar
+        DATA_FRAME_BYTES = setBufferTx((char*)bufferTx, dataFrame); // setear buffer para enviar por serial
+        Serial.write(bufferTx, DATA_FRAME_BYTES);                   // enviar data
         main_state = WAITING_COMMAND;
         break;
       case INIT:
         /******************************* INIT BOARD ********************************/
         setDataFrame(&scoreboard, dataFrame);
-        SCOREBOARD_CMD_BYTES = setBufferTx((char*)bufferTx, dataFrame);  // setear la trama de datos a enviar
-        Serial.write(bufferTx, SCOREBOARD_CMD_BYTES);                    // enviar data
+        DATA_FRAME_BYTES = setBufferTx((char*)bufferTx, dataFrame);  // setear la trama de datos a enviar
+        Serial.write(bufferTx, DATA_FRAME_BYTES);                    // enviar data
         main_state = WAITING_COMMAND;
         break;
-      case NOT_KNOWN:
+      case ERROR:
         Serial.println("Error: not known command");
         main_state = WAITING_COMMAND;
         break;
