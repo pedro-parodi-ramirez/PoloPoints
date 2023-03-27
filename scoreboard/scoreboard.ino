@@ -27,6 +27,11 @@ struct scoreboard_t{
   } timer;
 };
 
+enum timer_state_t{
+  RUNNING,
+  STOPPED
+};
+
 enum main_state_t
 {
   WAITING_COMMAND,
@@ -34,9 +39,8 @@ enum main_state_t
   EXECUTE_COMMAND,
   UPDATE_TIMER,
   UPDATE_BOARD,
-  INIT,
   ERROR
-} main_state = INIT;
+} main_state = UPDATE_BOARD;
 
 enum command_t
 {
@@ -91,6 +95,10 @@ void setup() {
   Timer0_cfg = timerBegin(0, 80, true);
   timerAttachInterrupt(Timer0_cfg, &Timer0_ISR, true);
   timerAlarmWrite(Timer0_cfg, SECOND_IN_MICROS, true);
+  timerAlarmEnable(Timer0_cfg);
+  // El timer inicia automaticamente con timerBegin, por lo tanto se frena y reinicia contador
+  timerStop(Timer0_cfg);
+  timerWrite(Timer0_cfg, 0);
   delay(100);
 }
 
@@ -153,12 +161,26 @@ void updateTimer(scoreboard_t* scoreboard){
   }
 }
 
-void startTimer(){
-  timerAlarmEnable(Timer0_cfg);
+void startTimer(timer_state_t* timerState){
+  if(*timerState == STOPPED){
+    Serial.print("Timer value before: ");
+    Serial.println(timerRead(Timer0_cfg));
+    timerStart(Timer0_cfg);
+    Serial.print("Timer value after: ");
+    Serial.println(timerRead(Timer0_cfg));
+    *timerState = RUNNING;
+  }
 }
 
-void stopTimer(){
-  timerAlarmDisable(Timer0_cfg);
+void stopTimer(timer_state_t* timerState){
+  if(*timerState == RUNNING){
+    Serial.print("Timer value before: ");
+    Serial.println(timerRead(Timer0_cfg));
+    timerStop(Timer0_cfg);
+    Serial.print("Timer value after: ");
+    Serial.println(timerRead(Timer0_cfg));
+    *timerState = STOPPED;
+  }
 }
 
 void updateScore(int increaseScore, int team, scoreboard_t* scoreboard){
@@ -171,12 +193,24 @@ void updateScore(int increaseScore, int team, scoreboard_t* scoreboard){
   }
 }
 
+void setDefaultValues(scoreboard_t* scoreboard){
+  scoreboard->score[TEAM_1] = 0;
+  scoreboard->score[TEAM_2] = 0;
+  scoreboard->timer.mm = 6;
+  scoreboard->timer.ss = 50;
+  
+  // Resetear y frenar el timer
+  timerStop(Timer0_cfg);
+  timerWrite(Timer0_cfg, 0);  
+}
+
 /************************************************************ INFINITE LOOP ************************************************************/
 void loop() {
   String bufferRx;
   char bufferTx[50];
   scoreboard_t scoreboard;
   command_t command = NOTHING_TO_DO;
+  timer_state_t timerState = STOPPED;
 
   char dataFrame[DATA_FRAME_ROWS][DATA_FRAME_COLUMNS] = {
     { HEADER, 0x7F },
@@ -202,6 +236,7 @@ void loop() {
   unsigned int DATA_FRAME_BYTES = 0;
 
   /****************************** STATE MACHINE LOOP *******************************/
+
   while(1){
     switch(main_state){
       case WAITING_COMMAND:
@@ -238,18 +273,24 @@ void loop() {
             main_state = UPDATE_BOARD;
             break;
           case START_TIMER:
-            startTimer();
+            startTimer(&timerState);
             main_state = WAITING_COMMAND;
             break;
           case STOP_TIMER:
-            stopTimer();
+            stopTimer(&timerState);
             main_state = WAITING_COMMAND;
+            break;
+          case RESET_ALL:
+            // Lleva todo el tablero a valores de inicio y frena el timer
+            setDefaultValues(&scoreboard);
+            main_state = UPDATE_BOARD;
             break;
           default:
             command = NOTHING_TO_DO;
             break;
         }
         command = NOTHING_TO_DO;
+        break;
       case UPDATE_TIMER:
         updateTimer(&scoreboard);
         main_state = UPDATE_BOARD;
@@ -258,13 +299,6 @@ void loop() {
         setDataFrame(&scoreboard, dataFrame);                       // setear la trama de datos a enviar
         DATA_FRAME_BYTES = setBufferTx((char*)bufferTx, dataFrame); // setear buffer para enviar por serial
         Serial.write(bufferTx, DATA_FRAME_BYTES);                   // enviar data
-        main_state = WAITING_COMMAND;
-        break;
-      case INIT:
-        /******************************* INIT BOARD ********************************/
-        setDataFrame(&scoreboard, dataFrame);
-        DATA_FRAME_BYTES = setBufferTx((char*)bufferTx, dataFrame);  // setear la trama de datos a enviar
-        Serial.write(bufferTx, DATA_FRAME_BYTES);                    // enviar data
         main_state = WAITING_COMMAND;
         break;
       case ERROR:
