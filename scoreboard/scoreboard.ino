@@ -22,8 +22,8 @@ hw_timer_t *Timer0_cfg = NULL;
 struct scoreboard_t{
   int score[2] = { 00, 00 };
   struct timer_t {
-    int mm = 1;
-    int ss = 10;
+    int mm = 6;
+    int ss = 50;
   } timer;
 };
 
@@ -37,10 +37,9 @@ enum main_state_t
   DEC_SCORE_T2,
   INC_MATCH,
   DEC_MATCH,
-  STOP_TIMER,
   UPDATE_TIMER,
   START_TIMER,
-  RESET_TIMER,
+  STOP_TIMER,
   RESET_ALL,
   INIT,
   NOT_KNOWN
@@ -85,8 +84,6 @@ void setup() {
   Timer0_cfg = timerBegin(0, 80, true);
   timerAttachInterrupt(Timer0_cfg, &Timer0_ISR, true);
   timerAlarmWrite(Timer0_cfg, SECOND_IN_MICROS, true);
-  timerAlarmEnable(Timer0_cfg);
-  timerStart(Timer0_cfg);
   delay(100);
 }
 
@@ -129,9 +126,8 @@ main_state_t processCommand(String bufferRx){
   else if(command == "DEC_SCORE_T2"){ return DEC_SCORE_T2; }
   else if(command == "INC_MATCH"){ return INC_MATCH; }
   else if(command == "DEC_MATCH"){ return DEC_MATCH; }
-  else if(command == "STOP_TIMER"){ return STOP_TIMER; }
   else if(command == "START_TIMER"){ return START_TIMER; }
-  else if(command == "RESET_TIMER"){ return RESET_TIMER; }
+  else if(command == "STOP_TIMER"){ return STOP_TIMER; }
   else if(command == "RESET_ALL"){ return RESET_ALL; }
   else{
     return NOT_KNOWN;
@@ -150,6 +146,14 @@ void updateTimer(scoreboard_t* scoreboard){
     scoreboard->timer.ss = 59;
     if(scoreboard->timer.mm > 0){ scoreboard->timer.mm--; }
   }
+}
+
+void startTimer(){
+  timerAlarmEnable(Timer0_cfg);
+}
+
+void stopTimer(){
+  timerAlarmDisable(Timer0_cfg);
 }
 
 void updateScore(int increaseScore, int team, scoreboard_t* scoreboard){
@@ -196,14 +200,15 @@ void loop() {
     switch(main_state){
       case WAITING_COMMAND:
         /************************** WAIT FOR NEW COMMAND **************************/
-        // Serial.println("\nWaiting command...");
-        // while (Serial.available() == 0) {}  // a la espera de datos por uart
-        // bufferRx = Serial.readString();
-        // Serial.print("Received: ");
-        // Serial.println(bufferRx);
-        // bufferRx.trim();
-        // main_state = processCommand(bufferRx);
-        // Serial.print(bufferRx);             // enviar a controlador LED
+        // A la espera de datos por UART
+        if (Serial.available() > 0) {
+          bufferRx = Serial.readString();
+          Serial.print("Received: ");
+          Serial.println(bufferRx);
+          bufferRx.trim();
+          main_state = processCommand(bufferRx);
+          Serial.print(bufferRx); // enviar a controlador LED
+        }
         break;
       case INC_SCORE_T1:
         updateScore(INCREASE, TEAM_1, &scoreboard);
@@ -224,7 +229,15 @@ void loop() {
       case UPDATE_TIMER:
         updateTimer(&scoreboard);
         main_state = UPDATE_BOARD;
-        break;        
+        break;
+      case START_TIMER:
+        startTimer();
+        main_state = WAITING_COMMAND;
+        break;
+      case STOP_TIMER:
+        stopTimer();
+        main_state = WAITING_COMMAND;
+        break;
       case UPDATE_BOARD:
         setDataFrame(&scoreboard, dataFrame);
         SCOREBOARD_CMD_BYTES = setBufferTx((char*)bufferTx, dataFrame);  // setear la trama de datos a enviar
