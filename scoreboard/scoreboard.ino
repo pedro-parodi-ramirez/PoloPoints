@@ -3,23 +3,28 @@
 
 #define DATA_FRAME_ROWS 15      // Filas de la matriz dataFrame a enviar a placa controladora. Filas -> header, comando, dato, ...
 #define DATA_FRAME_COLUMNS 2    // Columnas de la matriz dataFrame a enviar a placa controladora (2 columnas -> pares [key, value])
-#define VALUE 1
+#define VALUE 1                 // Columna en la que se encuentra el valor del par [key, value]
 #define DECREASE 0
 #define INCREASE 1
 #define TEAM_1 0
 #define TEAM_2 1
 #define SECOND_IN_MICROS 1000000
+#define DOT_VALUE 0x80
 
 /***************************************************************************/
 /********************************* TIMER ***********************************/
 
-hw_timer_t *Timer0_Cfg = NULL;
+hw_timer_t *Timer0_cfg = NULL;
 
 /***************************************************************************/
 /****************************** DATA TYPES *********************************/
 
 struct scoreboard_t{
-  int SCORE[2] = { 00, 00 };
+  int score[2] = { 00, 00 };
+  struct timer_t {
+    int mm = 1;
+    int ss = 10;
+  } timer;
 };
 
 enum main_state_t
@@ -51,10 +56,14 @@ typedef enum
   FLASH,
   RESERVED_2,
   RESERVED_3,
-  SCORE_TEAM1_DECENA,
-  SCORE_TEAM1_UNIDAD,
-  SCORE_TEAM2_DECENA,
-  SCORE_TEAM2_UNIDAD,
+  // SCORE_TEAM1_DECENA,
+  // SCORE_TEAM1_UNIDAD,
+  // SCORE_TEAM2_DECENA,
+  // SCORE_TEAM2_UNIDAD,
+  TIMER_MM_DECENA,
+  TIMER_MM_UNIDAD,
+  TIMER_SS_DECENA,
+  TIMER_SS_UNIDAD,
   DATA_END,
   CHECKSUM,
   FRAME_END
@@ -65,7 +74,6 @@ typedef enum
 void IRAM_ATTR Timer0_ISR()
 {
   main_state = UPDATE_TIMER;
-  Serial.println("Paso un segundo ...");
 }
 
 /***************************************************************************/
@@ -74,11 +82,11 @@ void IRAM_ATTR Timer0_ISR()
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(9600);
-  Timer0_Cfg = timerBegin(0, 80, true);
-  timerAttachInterrupt(Timer0_Cfg, &Timer0_ISR, true);
-  timerAlarmWrite(Timer0_Cfg, SECOND_IN_MICROS, true);
-  timerAlarmEnable(Timer0_Cfg);
-  timerStart(Timer0_Cfg);
+  Timer0_cfg = timerBegin(0, 80, true);
+  timerAttachInterrupt(Timer0_cfg, &Timer0_ISR, true);
+  timerAlarmWrite(Timer0_cfg, SECOND_IN_MICROS, true);
+  timerAlarmEnable(Timer0_cfg);
+  timerStart(Timer0_cfg);
   delay(100);
 }
 
@@ -92,10 +100,14 @@ char genChecksum(char dataFrame[DATA_FRAME_ROWS][DATA_FRAME_COLUMNS]) {
 }
 
 void setDataFrame(scoreboard_t* scoreboard, char dataFrame[DATA_FRAME_ROWS][DATA_FRAME_COLUMNS]){
-  dataFrame[SCORE_TEAM1_DECENA][VALUE] = (char)(scoreboard->SCORE[TEAM_1] / 10 + '0');
-  dataFrame[SCORE_TEAM1_UNIDAD][VALUE] = (char)(scoreboard->SCORE[TEAM_1] % 10 + '0');
-  dataFrame[SCORE_TEAM2_DECENA][VALUE] = (char)(scoreboard->SCORE[TEAM_2] / 10 + '0');
-  dataFrame[SCORE_TEAM2_UNIDAD][VALUE] = (char)(scoreboard->SCORE[TEAM_2] % 10 + '0');
+  // dataFrame[SCORE_TEAM1_DECENA][VALUE] = (char)(scoreboard->score[TEAM_1] / 10 + '0');
+  // dataFrame[SCORE_TEAM1_UNIDAD][VALUE] = (char)(scoreboard->score[TEAM_1] % 10 + '0');
+  // dataFrame[SCORE_TEAM2_DECENA][VALUE] = (char)(scoreboard->score[TEAM_2] / 10 + '0');
+  // dataFrame[SCORE_TEAM2_UNIDAD][VALUE] = (char)(scoreboard->score[TEAM_2] % 10 + '0');
+  dataFrame[TIMER_MM_DECENA][VALUE] = (char)(scoreboard->timer.mm / 10 + '0');
+  dataFrame[TIMER_MM_UNIDAD][VALUE] = (char)(scoreboard->timer.mm % 10 + '0') + DOT_VALUE;
+  dataFrame[TIMER_SS_DECENA][VALUE] = (char)(scoreboard->timer.ss / 10 + '0') + DOT_VALUE;
+  dataFrame[TIMER_SS_UNIDAD][VALUE] = (char)(scoreboard->timer.ss % 10 + '0');
   dataFrame[CHECKSUM][VALUE] = genChecksum(dataFrame);
 }
 
@@ -126,12 +138,27 @@ main_state_t processCommand(String bufferRx){
   }
 }
 
+void updateTimer(scoreboard_t* scoreboard){
+  scoreboard->timer.ss--;
+  if(scoreboard->timer.mm == 0 && scoreboard->timer.ss == 0){
+    // Detener y resetearlo el timer si llego a 00:00
+    timerStop(Timer0_cfg);
+    timerWrite(Timer0_cfg, 0);
+  }
+  else if(scoreboard->timer.ss < 0){
+    // Si pasaron 60 segundos, decrementar minutos y resetear segundos.
+    scoreboard->timer.ss = 59;
+    if(scoreboard->timer.mm > 0){ scoreboard->timer.mm--; }
+  }
+}
+
 void updateScore(int increaseScore, int team, scoreboard_t* scoreboard){
   if(increaseScore == INCREASE){
-    if(scoreboard->SCORE[team] < 99) { scoreboard->SCORE[team]++; };
+    if(scoreboard->score[team] < 99) { scoreboard->score[team]++; }
+    else { scoreboard->score[team] = 0; }
   }
   else{
-    if(scoreboard->SCORE[team] > 0) { scoreboard->SCORE[team]--; };
+    if(scoreboard->score[team] > 0) { scoreboard->score[team]--; }
   }
 }
 
@@ -150,10 +177,14 @@ void loop() {
     { FLASH, 0x01 },              // no guardar en flash
     { RESERVED_2, 0x00 },
     { RESERVED_3, 0x00 },
-    { SCORE_TEAM1_DECENA, 0x30 },
-    { SCORE_TEAM1_UNIDAD, 0x30 },
-    { SCORE_TEAM2_DECENA, 0x30 },
-    { SCORE_TEAM2_UNIDAD, 0x30 },
+    // { SCORE_TEAM1_DECENA, 0x30 },
+    // { SCORE_TEAM1_UNIDAD, 0x30 },
+    // { SCORE_TEAM2_DECENA, 0x30 },
+    // { SCORE_TEAM2_UNIDAD, 0x30 },
+    { TIMER_MM_DECENA, 0x30 },
+    { TIMER_MM_UNIDAD, 0x30 },
+    { TIMER_SS_DECENA, 0x30 },
+    { TIMER_SS_UNIDAD, 0x30 },
     { DATA_END, 0xFF },
     { CHECKSUM, 0x9D },
     { FRAME_END, 0x7F },
@@ -191,7 +222,7 @@ void loop() {
         main_state = UPDATE_BOARD;
         break;
       case UPDATE_TIMER:
-        updateScore(INCREASE, TEAM_1, &scoreboard);
+        updateTimer(&scoreboard);
         main_state = UPDATE_BOARD;
         break;        
       case UPDATE_BOARD:
