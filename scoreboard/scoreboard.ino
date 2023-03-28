@@ -13,6 +13,11 @@
 #define RX_MAX_LONG 50
 
 /***************************************************************************/
+/******************************** GLOBAL ***********************************/
+
+bool timerUpdated = false;
+
+/***************************************************************************/
 /********************************* TIMER ***********************************/
 
 hw_timer_t *Timer0_cfg = NULL;
@@ -30,17 +35,17 @@ struct scoreboard_t{
 
 enum main_state_t
 {
-  WAITING_COMMAND,
+  IDLE,
   PROCESS_COMMAND,
   EXECUTE_COMMAND,
-  UPDATE_TIMER,
-  UPDATE_BOARD,
+  INIT,
   ERROR
-} main_state = UPDATE_BOARD;
+} main_state = INIT;
 
 enum timer_state_t{
   RUNNING,
-  STOPPED
+  STOPPED,
+  FINISHED
 };
 
 enum command_t
@@ -84,7 +89,7 @@ typedef enum
 /****************************** IRQ_HANDLERS *******************************/
 void IRAM_ATTR Timer0_ISR()
 {
-  main_state = UPDATE_TIMER;
+  timerUpdated = true;
 }
 
 /***************************************************************************/
@@ -153,7 +158,7 @@ main_state_t pool_serial_rx(char* bufferRx){
       return PROCESS_COMMAND;
     }
   }  
-  return WAITING_COMMAND;
+  return IDLE;
 }
 
 command_t processCommand(char* bufferRx){
@@ -173,19 +178,20 @@ command_t processCommand(char* bufferRx){
   else{ return NOTHING_TO_DO; }
 }
 
-void updateTimer(scoreboard_t* scoreboard, timer_state_t* timerState){
+timer_state_t updateTimer(scoreboard_t* scoreboard){
   scoreboard->timer.ss--;
   if(scoreboard->timer.mm == 0 && scoreboard->timer.ss == 0){
     // Detener y resetearlo el timer si llego a 00:00
     timerStop(Timer0_cfg);
     timerWrite(Timer0_cfg, 0);
-    *timerState = STOPPED;
+    return FINISHED;
   }
   else if(scoreboard->timer.ss < 0){
     // Si pasaron 60 segundos, decrementar minutos y resetear segundos.
     scoreboard->timer.ss = 59;
     if(scoreboard->timer.mm > 0){ scoreboard->timer.mm--; }
   }
+  return RUNNING;
 }
 
 void startTimer(timer_state_t* timerState){
@@ -214,7 +220,7 @@ void setDefaultValues(scoreboard_t* scoreboard, timer_state_t* timerState){
   *timerState = STOPPED;
 }
 
-void updateScore(int increaseScore, int team, scoreboard_t* scoreboard){
+void updateScores(int increaseScore, int team, scoreboard_t* scoreboard){
   if(increaseScore == INCREASE){
     if(scoreboard->score[team] < 99) { scoreboard->score[team]++; }
     else { scoreboard->score[team] = 0; }
@@ -222,6 +228,13 @@ void updateScore(int increaseScore, int team, scoreboard_t* scoreboard){
   else{
     if(scoreboard->score[team] > 0) { scoreboard->score[team]--; }
   }
+}
+
+void refreshScoreboard(scoreboard_t* scoreboard, char dataFrame[DATA_FRAME_ROWS][DATA_FRAME_COLUMNS], char* bufferTx){
+  unsigned int DATA_FRAME_BYTES = 0;
+  setDataFrame(scoreboard, dataFrame);                        // setear la trama de datos a enviar
+  DATA_FRAME_BYTES = setBufferTx((char*)bufferTx, dataFrame); // setear buffer para enviar por serial
+  Serial.write(bufferTx, DATA_FRAME_BYTES);                   // enviar data
 }
 
 /************************************************************ INFINITE LOOP ************************************************************/
@@ -253,15 +266,20 @@ void loop() {
     { CHECKSUM, 0x9D },
     { FRAME_END, 0x7F },
   };
-  unsigned int DATA_FRAME_BYTES = 0;
 
   /****************************** STATE MACHINE LOOP *******************************/
 
   while(1){
     switch(main_state){
-      case WAITING_COMMAND:
-        // A la espera de datos por UART
+      case IDLE:
+        // A la espera de comando por UART
         main_state = pool_serial_rx(bufferRx);
+        if(timerUpdated){
+          timerState = updateTimer(&scoreboard);
+          refreshScoreboard(&scoreboard, dataFrame, bufferTx);
+          main_state = IDLE;
+          timerUpdated = false;
+        }
         break;
       case PROCESS_COMMAND:
         command = processCommand(bufferRx);
@@ -271,33 +289,38 @@ void loop() {
       case EXECUTE_COMMAND:
         switch(command){
           case INC_SCORE_T1:
-            updateScore(INCREASE, TEAM_1, &scoreboard);
-            main_state = UPDATE_BOARD;
+            updateScores(INCREASE, TEAM_1, &scoreboard);
+            refreshScoreboard(&scoreboard, dataFrame, bufferTx);
+            main_state = IDLE;
             break;
           case INC_SCORE_T2:
-            updateScore(INCREASE, TEAM_2, &scoreboard);
-            main_state = UPDATE_BOARD;
+            updateScores(INCREASE, TEAM_2, &scoreboard);
+            refreshScoreboard(&scoreboard, dataFrame, bufferTx);
+            main_state = IDLE;
             break;
           case DEC_SCORE_T1:
-            updateScore(DECREASE, TEAM_1, &scoreboard);
-            main_state = UPDATE_BOARD;
+            updateScores(DECREASE, TEAM_1, &scoreboard);
+            refreshScoreboard(&scoreboard, dataFrame, bufferTx);
+            main_state = IDLE;
             break;
           case DEC_SCORE_T2:
-            updateScore(DECREASE, TEAM_2, &scoreboard);
-            main_state = UPDATE_BOARD;
+            updateScores(DECREASE, TEAM_2, &scoreboard);
+            refreshScoreboard(&scoreboard, dataFrame, bufferTx);
+            main_state = IDLE;
             break;
           case START_TIMER:
             startTimer(&timerState);
-            main_state = WAITING_COMMAND;
+            main_state = IDLE;
             break;
           case STOP_TIMER:
             stopTimer(&timerState);
-            main_state = WAITING_COMMAND;
+            main_state = IDLE;
             break;
           case RESET_ALL:
             // Lleva todo el tablero a valores de inicio y frena el timer
             setDefaultValues(&scoreboard, &timerState);
-            main_state = UPDATE_BOARD;
+            refreshScoreboard(&scoreboard, dataFrame, bufferTx);
+            main_state = IDLE;
             break;
           default:
             command = NOTHING_TO_DO;
@@ -305,22 +328,16 @@ void loop() {
         }
         command = NOTHING_TO_DO;
         break;
-      case UPDATE_TIMER:
-        updateTimer(&scoreboard, &timerState);
-        main_state = UPDATE_BOARD;
-        break;
-      case UPDATE_BOARD:
-        setDataFrame(&scoreboard, dataFrame);                       // setear la trama de datos a enviar
-        DATA_FRAME_BYTES = setBufferTx((char*)bufferTx, dataFrame); // setear buffer para enviar por serial
-        Serial.write(bufferTx, DATA_FRAME_BYTES);                   // enviar data
-        main_state = WAITING_COMMAND;
+      case INIT:
+        refreshScoreboard(&scoreboard, dataFrame, bufferTx);
+        main_state = IDLE;
         break;
       case ERROR:
         Serial.println("Error: not known command");
-        main_state = WAITING_COMMAND;
+        main_state = IDLE;
         break;
       default:
-        main_state = WAITING_COMMAND;
+        main_state = IDLE;
         break;
     }
     delay(10);
