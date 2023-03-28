@@ -10,6 +10,7 @@
 #define TEAM_2 1
 #define SECOND_IN_MICROS 1000000
 #define DOT_VALUE 0x80
+#define RX_MAX_LONG 50
 
 /***************************************************************************/
 /********************************* TIMER ***********************************/
@@ -27,11 +28,6 @@ struct scoreboard_t{
   } timer;
 };
 
-enum timer_state_t{
-  RUNNING,
-  STOPPED
-};
-
 enum main_state_t
 {
   WAITING_COMMAND,
@@ -41,6 +37,11 @@ enum main_state_t
   UPDATE_BOARD,
   ERROR
 } main_state = UPDATE_BOARD;
+
+enum timer_state_t{
+  RUNNING,
+  STOPPED
+};
 
 enum command_t
 {
@@ -133,26 +134,52 @@ unsigned int setBufferTx(char* bufferTx, char dataFrame[DATA_FRAME_ROWS][DATA_FR
   return bytes_to_transfer;
 }
 
-command_t processCommand(String bufferRx){
-  String command = bufferRx;
-  if(command == "INC_SCORE_T1"){ return INC_SCORE_T1; }
-  else if(command == "INC_SCORE_T2"){ return INC_SCORE_T2; }
-  else if(command == "DEC_SCORE_T1"){ return DEC_SCORE_T1; }
-  else if(command == "DEC_SCORE_T2"){ return DEC_SCORE_T2; }
-  else if(command == "INC_MATCH"){ return INC_MATCH; }
-  else if(command == "DEC_MATCH"){ return DEC_MATCH; }
-  else if(command == "START_TIMER"){ return START_TIMER; }
-  else if(command == "STOP_TIMER"){ return STOP_TIMER; }
-  else if(command == "RESET_ALL"){ return RESET_ALL; }
+main_state_t pool_serial_rx(char* bufferRx){
+  static byte index = 0;
+  char endMarker = '\n';
+  char newChar;
+  if (Serial.available() > 0) {
+    newChar = Serial.read();
+    if(newChar != endMarker){
+      bufferRx[index] = newChar;
+      index++;
+      if(index >= RX_MAX_LONG){
+        index = RX_MAX_LONG - 1;
+      }
+    }
+    else{
+      bufferRx[index] = '\0';
+      index = 0;
+      return PROCESS_COMMAND;
+    }
+  }  
+  return WAITING_COMMAND;
+}
+
+command_t processCommand(char* bufferRx){
+  char* command = bufferRx;
+  strcpy(command, bufferRx);
+  Serial.print("Received: ");
+  Serial.println(command);
+  if(strcmp(command, "INC_SCORE_T1") == 0){ return INC_SCORE_T1; }
+  else if(strcmp(command, "INC_SCORE_T2") == 0){ return INC_SCORE_T2; }
+  else if(strcmp(command, "DEC_SCORE_T1") == 0){ return DEC_SCORE_T1; }
+  else if(strcmp(command, "DEC_SCORE_T2") == 0){ return DEC_SCORE_T2; }
+  else if(strcmp(command, "INC_MATCH") == 0){ return INC_MATCH; }
+  else if(strcmp(command, "DEC_MATCH") == 0){ return DEC_MATCH; }
+  else if(strcmp(command, "START_TIMER") == 0){ return START_TIMER; }
+  else if(strcmp(command, "STOP_TIMER") == 0){ return STOP_TIMER; }
+  else if(strcmp(command, "RESET_ALL") == 0){ return RESET_ALL; }
   else{ return NOTHING_TO_DO; }
 }
 
-void updateTimer(scoreboard_t* scoreboard){
+void updateTimer(scoreboard_t* scoreboard, timer_state_t* timerState){
   scoreboard->timer.ss--;
   if(scoreboard->timer.mm == 0 && scoreboard->timer.ss == 0){
     // Detener y resetearlo el timer si llego a 00:00
     timerStop(Timer0_cfg);
     timerWrite(Timer0_cfg, 0);
+    *timerState = STOPPED;
   }
   else if(scoreboard->timer.ss < 0){
     // Si pasaron 60 segundos, decrementar minutos y resetear segundos.
@@ -163,24 +190,28 @@ void updateTimer(scoreboard_t* scoreboard){
 
 void startTimer(timer_state_t* timerState){
   if(*timerState == STOPPED){
-    Serial.print("Timer value before: ");
-    Serial.println(timerRead(Timer0_cfg));
     timerStart(Timer0_cfg);
-    Serial.print("Timer value after: ");
-    Serial.println(timerRead(Timer0_cfg));
     *timerState = RUNNING;
   }
 }
 
 void stopTimer(timer_state_t* timerState){
   if(*timerState == RUNNING){
-    Serial.print("Timer value before: ");
-    Serial.println(timerRead(Timer0_cfg));
     timerStop(Timer0_cfg);
-    Serial.print("Timer value after: ");
-    Serial.println(timerRead(Timer0_cfg));
     *timerState = STOPPED;
   }
+}
+
+void setDefaultValues(scoreboard_t* scoreboard, timer_state_t* timerState){
+  scoreboard->score[TEAM_1] = 0;
+  scoreboard->score[TEAM_2] = 0;
+  scoreboard->timer.mm = 6;
+  scoreboard->timer.ss = 50;
+  
+  // Resetear y frenar el timer
+  timerStop(Timer0_cfg);
+  timerWrite(Timer0_cfg, 0);
+  *timerState = STOPPED;
 }
 
 void updateScore(int increaseScore, int team, scoreboard_t* scoreboard){
@@ -193,20 +224,9 @@ void updateScore(int increaseScore, int team, scoreboard_t* scoreboard){
   }
 }
 
-void setDefaultValues(scoreboard_t* scoreboard){
-  scoreboard->score[TEAM_1] = 0;
-  scoreboard->score[TEAM_2] = 0;
-  scoreboard->timer.mm = 6;
-  scoreboard->timer.ss = 50;
-  
-  // Resetear y frenar el timer
-  timerStop(Timer0_cfg);
-  timerWrite(Timer0_cfg, 0);  
-}
-
 /************************************************************ INFINITE LOOP ************************************************************/
 void loop() {
-  String bufferRx;
+  char bufferRx[RX_MAX_LONG];
   char bufferTx[50];
   scoreboard_t scoreboard;
   command_t command = NOTHING_TO_DO;
@@ -241,14 +261,8 @@ void loop() {
     switch(main_state){
       case WAITING_COMMAND:
         // A la espera de datos por UART
-        if (Serial.available() > 0) {
-          bufferRx = Serial.readString();
-          Serial.print("Received: ");
-          Serial.println(bufferRx);
-          bufferRx.trim();
-          main_state = PROCESS_COMMAND;
-        }
-        break;      
+        main_state = pool_serial_rx(bufferRx);
+        break;
       case PROCESS_COMMAND:
         command = processCommand(bufferRx);
         if(command != NOTHING_TO_DO){ main_state = EXECUTE_COMMAND; }
@@ -282,7 +296,7 @@ void loop() {
             break;
           case RESET_ALL:
             // Lleva todo el tablero a valores de inicio y frena el timer
-            setDefaultValues(&scoreboard);
+            setDefaultValues(&scoreboard, &timerState);
             main_state = UPDATE_BOARD;
             break;
           default:
@@ -292,7 +306,7 @@ void loop() {
         command = NOTHING_TO_DO;
         break;
       case UPDATE_TIMER:
-        updateTimer(&scoreboard);
+        updateTimer(&scoreboard, &timerState);
         main_state = UPDATE_BOARD;
         break;
       case UPDATE_BOARD:
