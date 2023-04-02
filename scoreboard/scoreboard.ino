@@ -1,7 +1,7 @@
 /***************************************************************************/
 /******************************** DEFINES **********************************/
 
-#define DATA_FRAME_ROWS 15      // Filas de la matriz dataFrame a enviar a placa controladora. Filas -> header, comando, dato, ...
+#define DATA_FRAME_ROWS 20      // Filas de la matriz dataFrame a enviar a placa controladora. Filas -> header, comando, dato, ...
 #define DATA_FRAME_COLUMNS 2    // Columnas de la matriz dataFrame a enviar a placa controladora (2 columnas -> pares [key, value])
 #define VALUE 1                 // Columna en la que se encuentra el valor del par [key, value]
 #define DECREASE 0
@@ -26,10 +26,11 @@ hw_timer_t *Timer0_cfg = NULL;
 /****************************** DATA TYPES *********************************/
 
 struct scoreboard_t{
-  int score[2] = { 00, 00 };
+  int score[2] = { 0, 0 };
+  int chuker = 0;
   struct timer_t {
     int mm = 6;
-    int ss = 50;
+    int ss = 30;
   } timer;
 };
 
@@ -54,8 +55,8 @@ enum command_t
   INC_SCORE_T2,
   DEC_SCORE_T1,
   DEC_SCORE_T2,
-  INC_MATCH,
-  DEC_MATCH,
+  INC_CHUKER,
+  DEC_CHUKER,
   START_TIMER,
   STOP_TIMER,
   RESET_ALL,
@@ -72,14 +73,15 @@ typedef enum
   FLASH,
   RESERVED_2,
   RESERVED_3,
-  // SCORE_TEAM1_DECENA,
-  // SCORE_TEAM1_UNIDAD,
-  // SCORE_TEAM2_DECENA,
-  // SCORE_TEAM2_UNIDAD,
   TIMER_MM_DECENA,
   TIMER_MM_UNIDAD,
   TIMER_SS_DECENA,
   TIMER_SS_UNIDAD,
+  SCORE_TEAM2_UNIDAD,
+  SCORE_TEAM2_DECENA,
+  SCORE_TEAM1_UNIDAD,
+  SCORE_TEAM1_DECENA,
+  CHUKER,
   DATA_END,
   CHECKSUM,
   FRAME_END
@@ -118,14 +120,15 @@ char genChecksum(char dataFrame[DATA_FRAME_ROWS][DATA_FRAME_COLUMNS]) {
 }
 
 void setDataFrame(scoreboard_t* scoreboard, char dataFrame[DATA_FRAME_ROWS][DATA_FRAME_COLUMNS]){
-  // dataFrame[SCORE_TEAM1_DECENA][VALUE] = (char)(scoreboard->score[TEAM_1] / 10 + '0');
-  // dataFrame[SCORE_TEAM1_UNIDAD][VALUE] = (char)(scoreboard->score[TEAM_1] % 10 + '0');
-  // dataFrame[SCORE_TEAM2_DECENA][VALUE] = (char)(scoreboard->score[TEAM_2] / 10 + '0');
-  // dataFrame[SCORE_TEAM2_UNIDAD][VALUE] = (char)(scoreboard->score[TEAM_2] % 10 + '0');
   dataFrame[TIMER_MM_DECENA][VALUE] = (char)(scoreboard->timer.mm / 10 + '0');
   dataFrame[TIMER_MM_UNIDAD][VALUE] = (char)(scoreboard->timer.mm % 10 + '0') + DOT_VALUE;
   dataFrame[TIMER_SS_DECENA][VALUE] = (char)(scoreboard->timer.ss / 10 + '0') + DOT_VALUE;
   dataFrame[TIMER_SS_UNIDAD][VALUE] = (char)(scoreboard->timer.ss % 10 + '0');
+  dataFrame[SCORE_TEAM2_UNIDAD][VALUE] = (char)(scoreboard->score[TEAM_2] % 10 + '0');
+  dataFrame[SCORE_TEAM2_DECENA][VALUE] = (char)(scoreboard->score[TEAM_2] / 10 + '0');
+  dataFrame[SCORE_TEAM1_UNIDAD][VALUE] = (char)(scoreboard->score[TEAM_1] % 10 + '0');
+  dataFrame[SCORE_TEAM1_DECENA][VALUE] = (char)(scoreboard->score[TEAM_1] / 10 + '0');
+  dataFrame[CHUKER][VALUE] = (char)(scoreboard->chuker % 10 + '0');
   dataFrame[CHECKSUM][VALUE] = genChecksum(dataFrame);
 }
 
@@ -133,7 +136,7 @@ unsigned int setBufferTx(char* bufferTx, char dataFrame[DATA_FRAME_ROWS][DATA_FR
   char i = 0;
   unsigned int bytes_to_transfer = 0;
   for(i=0; i < DATA_FRAME_ROWS; i++){
-    bufferTx[i] = dataFrame[i][VALUE];  // Los datos se encuentran en la 2da columna -> pares [key, value]
+    bufferTx[i] = dataFrame[i][VALUE];
     bytes_to_transfer++;
   }
   return bytes_to_transfer;
@@ -170,8 +173,8 @@ command_t processCommand(char* bufferRx){
   else if(strcmp(command, "INC_SCORE_T2") == 0){ return INC_SCORE_T2; }
   else if(strcmp(command, "DEC_SCORE_T1") == 0){ return DEC_SCORE_T1; }
   else if(strcmp(command, "DEC_SCORE_T2") == 0){ return DEC_SCORE_T2; }
-  else if(strcmp(command, "INC_MATCH") == 0){ return INC_MATCH; }
-  else if(strcmp(command, "DEC_MATCH") == 0){ return DEC_MATCH; }
+  else if(strcmp(command, "INC_CHUKER") == 0){ return INC_CHUKER; }
+  else if(strcmp(command, "DEC_CHUKER") == 0){ return DEC_CHUKER; }
   else if(strcmp(command, "START_TIMER") == 0){ return START_TIMER; }
   else if(strcmp(command, "STOP_TIMER") == 0){ return STOP_TIMER; }
   else if(strcmp(command, "RESET_ALL") == 0){ return RESET_ALL; }
@@ -254,14 +257,15 @@ void loop() {
     { FLASH, 0x01 },              // no guardar en flash
     { RESERVED_2, 0x00 },
     { RESERVED_3, 0x00 },
-    // { SCORE_TEAM1_DECENA, 0x30 },
-    // { SCORE_TEAM1_UNIDAD, 0x30 },
-    // { SCORE_TEAM2_DECENA, 0x30 },
-    // { SCORE_TEAM2_UNIDAD, 0x30 },
     { TIMER_MM_DECENA, 0x30 },
     { TIMER_MM_UNIDAD, 0x30 },
     { TIMER_SS_DECENA, 0x30 },
     { TIMER_SS_UNIDAD, 0x30 },
+    { SCORE_TEAM2_UNIDAD, 0x30 },
+    { SCORE_TEAM2_DECENA, 0x30 },
+    { SCORE_TEAM1_UNIDAD, 0x30 },
+    { SCORE_TEAM1_DECENA, 0x30 },
+    { CHUKER, 0x30 },
     { DATA_END, 0xFF },
     { CHECKSUM, 0x9D },
     { FRAME_END, 0x7F },
