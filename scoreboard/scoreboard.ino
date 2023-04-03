@@ -11,11 +11,22 @@
 #define SECOND_IN_MICROS 1000000
 #define DOT_VALUE 0x80
 #define RX_MAX_LONG 50
+#define TX_MAX_LONG 50
 
 /***************************************************************************/
 /******************************** GLOBAL ***********************************/
 
 bool timerUpdated = false;
+const char* cmdIncreaseScoreT1 = "+t1";
+const char* cmdIncreaseScoreT2 = "+t2";
+const char* cmdDecreaseScoreT1 = "-t1";
+const char* cmdDecreaseScoreT2 = "-t1";
+const char* cmdIncreaseChuker = "+c";
+const char* cmdDecreaseChuker = "-c";
+const char* cmdStopTimer = "stop_timer";
+const char* cmdStartTimer = "start_timer";
+const char* cmdResetTimer = "reset_timer";
+const char* cmdResetAll = "reset_all";
 
 /***************************************************************************/
 /********************************* TIMER ***********************************/
@@ -25,17 +36,21 @@ hw_timer_t *Timer0_cfg = NULL;
 /***************************************************************************/
 /****************************** DATA TYPES *********************************/
 
+struct _timer_t{
+    int mm = 6;
+    int ss = 30;
+};
+
 struct scoreboard_t{
   int score[2] = { 0, 0 };
   int chuker = 0;
-  struct timer_t {
-    int mm = 6;
-    int ss = 30;
+  struct __timer_t{
+    _timer_t value;
+    _timer_t initValue; // se usa para el comando reset_timer
   } timer;
 };
 
-enum main_state_t
-{
+enum main_state_t{
   IDLE,
   PROCESS_COMMAND,
   EXECUTE_COMMAND,
@@ -59,6 +74,7 @@ enum command_t
   DEC_CHUKER,
   START_TIMER,
   STOP_TIMER,
+  RESET_TIMER,
   RESET_ALL,
   NOTHING_TO_DO
 };
@@ -120,10 +136,11 @@ char genChecksum(char dataFrame[DATA_FRAME_ROWS][DATA_FRAME_COLUMNS]) {
 }
 
 void setDataFrame(scoreboard_t* scoreboard, char dataFrame[DATA_FRAME_ROWS][DATA_FRAME_COLUMNS]){
-  dataFrame[TIMER_MM_DECENA][VALUE] = (char)(scoreboard->timer.mm / 10 + '0');
-  dataFrame[TIMER_MM_UNIDAD][VALUE] = (char)(scoreboard->timer.mm % 10 + '0') + DOT_VALUE;
-  dataFrame[TIMER_SS_DECENA][VALUE] = (char)(scoreboard->timer.ss / 10 + '0') + DOT_VALUE;
-  dataFrame[TIMER_SS_UNIDAD][VALUE] = (char)(scoreboard->timer.ss % 10 + '0');
+  // Se convierten valores numéricos a valores ASCII y se asignan al dataFrame a enviar al tablero
+  dataFrame[TIMER_MM_DECENA][VALUE] = (char)(scoreboard->timer.value.mm / 10 + '0');
+  dataFrame[TIMER_MM_UNIDAD][VALUE] = (char)(scoreboard->timer.value.mm % 10 + '0') + DOT_VALUE;
+  dataFrame[TIMER_SS_DECENA][VALUE] = (char)(scoreboard->timer.value.ss / 10 + '0') + DOT_VALUE;
+  dataFrame[TIMER_SS_UNIDAD][VALUE] = (char)(scoreboard->timer.value.ss % 10 + '0');
   dataFrame[SCORE_TEAM2_UNIDAD][VALUE] = (char)(scoreboard->score[TEAM_2] % 10 + '0');
   dataFrame[SCORE_TEAM2_DECENA][VALUE] = (char)(scoreboard->score[TEAM_2] / 10 + '0');
   dataFrame[SCORE_TEAM1_UNIDAD][VALUE] = (char)(scoreboard->score[TEAM_1] % 10 + '0');
@@ -169,30 +186,31 @@ command_t processCommand(char* bufferRx){
   strcpy(command, bufferRx);
   Serial.print("Received: ");
   Serial.println(command);
-  if(strcmp(command, "INC_SCORE_T1") == 0){ return INC_SCORE_T1; }
-  else if(strcmp(command, "INC_SCORE_T2") == 0){ return INC_SCORE_T2; }
-  else if(strcmp(command, "DEC_SCORE_T1") == 0){ return DEC_SCORE_T1; }
-  else if(strcmp(command, "DEC_SCORE_T2") == 0){ return DEC_SCORE_T2; }
-  else if(strcmp(command, "INC_CHUKER") == 0){ return INC_CHUKER; }
-  else if(strcmp(command, "DEC_CHUKER") == 0){ return DEC_CHUKER; }
-  else if(strcmp(command, "START_TIMER") == 0){ return START_TIMER; }
-  else if(strcmp(command, "STOP_TIMER") == 0){ return STOP_TIMER; }
-  else if(strcmp(command, "RESET_ALL") == 0){ return RESET_ALL; }
+  if(strcmp(command, cmdIncreaseScoreT1) == 0){ return INC_SCORE_T1; }
+  else if(strcmp(command, cmdIncreaseScoreT2) == 0){ return INC_SCORE_T2; }
+  else if(strcmp(command, cmdDecreaseScoreT1) == 0){ return DEC_SCORE_T1; }
+  else if(strcmp(command, cmdDecreaseScoreT2) == 0){ return DEC_SCORE_T2; }
+  else if(strcmp(command, cmdIncreaseChuker) == 0){ return INC_CHUKER; }
+  else if(strcmp(command, cmdDecreaseChuker) == 0){ return DEC_CHUKER; }
+  else if(strcmp(command, cmdStartTimer) == 0){ return START_TIMER; }
+  else if(strcmp(command, cmdStopTimer) == 0){ return STOP_TIMER; }
+  else if(strcmp(command, cmdResetTimer) == 0){ return RESET_TIMER; }
+  else if(strcmp(command, cmdResetAll) == 0){ return RESET_ALL; }
   else{ return NOTHING_TO_DO; }
 }
 
 timer_state_t updateTimer(scoreboard_t* scoreboard){
-  scoreboard->timer.ss--;
-  if(scoreboard->timer.mm == 0 && scoreboard->timer.ss == 0){
+  scoreboard->timer.value.ss--;
+  if(scoreboard->timer.value.mm == 0 && scoreboard->timer.value.ss == 0){
     // Detener y resetearlo el timer si llego a 00:00
     timerStop(Timer0_cfg);
     timerWrite(Timer0_cfg, 0);
     return FINISHED;
   }
-  else if(scoreboard->timer.ss < 0){
+  else if(scoreboard->timer.value.ss < 0){
     // Si pasaron 60 segundos, decrementar minutos y resetear segundos.
-    scoreboard->timer.ss = 59;
-    if(scoreboard->timer.mm > 0){ scoreboard->timer.mm--; }
+    scoreboard->timer.value.ss = 59;
+    if(scoreboard->timer.value.mm > 0){ scoreboard->timer.value.mm--; }
   }
   return RUNNING;
 }
@@ -211,11 +229,22 @@ void stopTimer(timer_state_t* timerState){
   }
 }
 
+void resetTimer(scoreboard_t* scoreboard, timer_state_t* timerState){
+  scoreboard->timer.value.mm = scoreboard->timer.initValue.mm;
+  scoreboard->timer.value.ss = scoreboard->timer.initValue.ss;
+  
+  // Resetear y frenar el timer
+  timerStop(Timer0_cfg);
+  timerWrite(Timer0_cfg, 0);
+  *timerState = STOPPED;
+}
+
 void setDefaultValues(scoreboard_t* scoreboard, timer_state_t* timerState){
   scoreboard->score[TEAM_1] = 0;
   scoreboard->score[TEAM_2] = 0;
-  scoreboard->timer.mm = 6;
-  scoreboard->timer.ss = 50;
+  scoreboard->chuker = 0;
+  scoreboard->timer.value.mm = 6;
+  scoreboard->timer.value.ss = 50;
   
   // Resetear y frenar el timer
   timerStop(Timer0_cfg);
@@ -233,6 +262,16 @@ void updateScores(int increaseScore, int team, scoreboard_t* scoreboard){
   }
 }
 
+void updateChuker(int increaseScore, scoreboard_t* scoreboard){
+  if(increaseScore == INCREASE){
+    if(scoreboard->chuker < 9) { scoreboard->chuker++; }
+    else { scoreboard->chuker = 0; }
+  }
+  else{
+    if(scoreboard->chuker > 0) { scoreboard->chuker--; }
+  }
+}
+
 void refreshScoreboard(scoreboard_t* scoreboard, char dataFrame[DATA_FRAME_ROWS][DATA_FRAME_COLUMNS], char* bufferTx){
   unsigned int DATA_FRAME_BYTES = 0;
   setDataFrame(scoreboard, dataFrame);                        // setear la trama de datos a enviar
@@ -243,7 +282,7 @@ void refreshScoreboard(scoreboard_t* scoreboard, char dataFrame[DATA_FRAME_ROWS]
 /************************************************************ INFINITE LOOP ************************************************************/
 void loop() {
   char bufferRx[RX_MAX_LONG];
-  char bufferTx[50];
+  char bufferTx[TX_MAX_LONG];
   scoreboard_t scoreboard;
   command_t command = NOTHING_TO_DO;
   timer_state_t timerState = STOPPED;
@@ -312,12 +351,27 @@ void loop() {
             refreshScoreboard(&scoreboard, dataFrame, bufferTx);
             main_state = IDLE;
             break;
+          case INC_CHUKER:
+            updateChuker(INCREASE, &scoreboard);
+            refreshScoreboard(&scoreboard, dataFrame, bufferTx);
+            main_state = IDLE;
+            break;
+          case DEC_CHUKER:
+            updateChuker(DECREASE, &scoreboard);
+            refreshScoreboard(&scoreboard, dataFrame, bufferTx);
+            main_state = IDLE;
+            break;
           case START_TIMER:
             startTimer(&timerState);
             main_state = IDLE;
             break;
           case STOP_TIMER:
             stopTimer(&timerState);
+            main_state = IDLE;
+            break;
+          case RESET_TIMER:
+            resetTimer(&scoreboard, &timerState);
+            refreshScoreboard(&scoreboard, dataFrame, bufferTx);
             main_state = IDLE;
             break;
           case RESET_ALL:
