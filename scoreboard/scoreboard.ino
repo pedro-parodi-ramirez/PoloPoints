@@ -1,3 +1,6 @@
+#include "WiFi.h"
+#include "ESPAsyncWebServer.h"
+
 /***************************************************************************/
 /******************************** DEFINES **********************************/
 
@@ -12,11 +15,13 @@
 #define DOT_VALUE 0x80
 #define RX_MAX_LONG 50
 #define TX_MAX_LONG 50
+#define MAX_CONNECTIONS 1
 
 /***************************************************************************/
 /******************************** GLOBAL ***********************************/
 
 bool timerUpdated = false;
+bool cmdReceived = false;
 const char* cmdIncreaseScoreT1 = "+t1";
 const char* cmdIncreaseScoreT2 = "+t2";
 const char* cmdDecreaseScoreT1 = "-t1";
@@ -27,6 +32,11 @@ const char* cmdStopTimer = "stop_timer";
 const char* cmdStartTimer = "start_timer";
 const char* cmdResetTimer = "reset_timer";
 const char* cmdResetAll = "reset_all";
+
+const char* ssid = "ESP32-AccessPoint";
+const char* password =  "12345678";
+ 
+AsyncWebServer server(80);
 
 /***************************************************************************/
 /********************************* TIMER ***********************************/
@@ -77,7 +87,7 @@ enum command_t
   RESET_TIMER,
   RESET_ALL,
   NOTHING_TO_DO
-};
+} command = NOTHING_TO_DO;
 
 typedef enum
 {
@@ -111,7 +121,7 @@ void IRAM_ATTR Timer0_ISR()
 }
 
 /***************************************************************************/
-/******************************** FUNCTIONS ********************************/
+/********************************** SETUP **********************************/
 
 void setup() {
   // put your setup code here, to run once:
@@ -124,7 +134,134 @@ void setup() {
   timerStop(Timer0_cfg);
   timerWrite(Timer0_cfg, 0);
   delay(100);
+  
+  /* WIFI ACCESS POINT */
+  Serial.println("Setting AP (Access Point) ...");
+  if(!WiFi.softAP(ssid, password, 1, false, MAX_CONNECTIONS)){ Serial.println("Something went wrong!"); }
+
+  IPAddress IP = WiFi.softAPIP();
+  Serial.print("AP IP address: ");
+  Serial.println(IP);
+  
+  server.on("/timer", HTTP_GET, [](AsyncWebServerRequest* request){
+    const int paramQty = request->params();
+    if(paramQty < 1){
+      Serial.println("Faltan parametros.");
+      request->send(400);
+      return;
+    }
+    AsyncWebParameter* p_0 = request->getParam(0);
+    const String cmd = p_0->value();
+    if(cmd == "stop"){
+      Serial.println("Solicitud de frenar el timer");
+      command = STOP_TIMER;
+    }
+    else if(cmd == "start"){
+      Serial.println("Solicitud de iniciar el timer");
+      command = START_TIMER;
+    }
+    else if(cmd == "reset"){
+      Serial.println("Solicitud de resetear el timer");
+      command = RESET_TIMER;
+    }
+    // else if(cmd == "set"){
+    //   if(paramQty < 2){
+    //     request->send(400);
+    //     return;
+    //   }
+    //   AsyncWebParameter* p_1 = request->getParam(1);
+    //   const String param = p_1->value();
+    //   Serial.println("Param_1 value: " + param);
+    //   Serial.println("Solicitud de configurar tiempo del timer");
+    // }
+    else{
+      Serial.println("Error en parametro->cmd");
+      request->send(404);
+      return;
+    }
+    cmdReceived = true;
+    request->send(200);
+  });
+
+  server.on("/score", HTTP_GET, [](AsyncWebServerRequest* request){
+    const int paramQty = request->params();
+    if(paramQty < 2){
+      Serial.println("Faltan parametros.");
+      request->send(400);
+      return;
+    }
+    AsyncWebParameter* p_0 = request->getParam(0);
+    AsyncWebParameter* p_1 = request->getParam(1);
+    const String cmd = p_0->value();
+    const String param = p_1->value();
+    if(cmd == "up"){
+      if(param == "t1"){
+        Serial.println("Solicitud de incrementar puntaje team_1.");
+        command = INC_SCORE_T1;
+      }
+      else if(param == "t2"){
+        Serial.println("Solicitud de incrementar puntaje team_2.");
+        command = INC_SCORE_T2;
+      }
+      else{
+        Serial.println("Error en parametro->param");
+        request->send(404);
+      }
+    }
+    else if(cmd == "down"){
+      if(param == "t1"){
+        Serial.println("Solicitud de decrementar puntaje team_1.");
+        command = DEC_SCORE_T1;
+      }
+      else if(param == "t2"){
+        Serial.println("Solicitud de decrementar puntaje team_2.");
+        command = DEC_SCORE_T2;
+      }
+      else{
+        Serial.println("Error en parametro->param");
+        request->send(404);
+      }
+    }
+    else{
+      Serial.println("Error en parametro->cmd");
+      request->send(404);
+    }
+    cmdReceived = true;
+    request->send(200);
+  });
+
+  server.on("/chuker", HTTP_GET, [](AsyncWebServerRequest* request){
+    const int paramQty = request->params();
+    if(paramQty < 1){
+      Serial.println("Faltan parametros.");
+      request->send(400);
+      return;
+    }
+    AsyncWebParameter* p_0 = request->getParam(0);
+    const String cmd = p_0->value();
+    Serial.println("Param_0 value: " + cmd);
+    if(cmd == "up"){
+      Serial.println("Solicitud de incrementar el chuker.");
+      command = INC_CHUKER;
+    }
+    else if(cmd == "down"){
+      Serial.println("Solicitud de decrementar el chuker.");
+      command = DEC_CHUKER;
+    }
+    else{
+      Serial.println("Error en parametro->cmd");
+      request->send(404);
+    }
+    cmdReceived = true;
+    request->send(200);
+  });
+  server.begin();
+
+  delay(100);
 }
+
+/***************************************************************************/
+/******************************** FUNCTIONS ********************************/
 
 char genChecksum(char dataFrame[DATA_FRAME_ROWS][DATA_FRAME_COLUMNS]) {
   int checksum = 0, i;
@@ -159,27 +296,27 @@ unsigned int setBufferTx(char* bufferTx, char dataFrame[DATA_FRAME_ROWS][DATA_FR
   return bytes_to_transfer;
 }
 
-main_state_t pool_serial_rx(char* bufferRx){
-  static byte index = 0;
-  char endMarker = '\n';
-  char newChar;
-  if (Serial.available() > 0) {
-    newChar = Serial.read();
-    if(newChar != endMarker){
-      bufferRx[index] = newChar;
-      index++;
-      if(index >= RX_MAX_LONG){
-        index = RX_MAX_LONG - 1;
-      }
-    }
-    else{
-      bufferRx[index] = '\0';
-      index = 0;
-      return PROCESS_COMMAND;
-    }
-  }  
-  return IDLE;
-}
+// main_state_t pool_serial_rx(char* bufferRx){
+//   static byte index = 0;
+//   char endMarker = '\n';
+//   char newChar;
+//   if (Serial.available() > 0) {
+//     newChar = Serial.read();
+//     if(newChar != endMarker){
+//       bufferRx[index] = newChar;
+//       index++;
+//       if(index >= RX_MAX_LONG){
+//         index = RX_MAX_LONG - 1;
+//       }
+//     }
+//     else{
+//       bufferRx[index] = '\0';
+//       index = 0;
+//       return PROCESS_COMMAND;
+//     }
+//   }  
+//   return IDLE;
+// }
 
 command_t processCommand(char* bufferRx){
   char* command = bufferRx;
@@ -283,10 +420,8 @@ void refreshScoreboard(scoreboard_t* scoreboard, char dataFrame[DATA_FRAME_ROWS]
 void loop() {
   char bufferRx[RX_MAX_LONG];
   char bufferTx[TX_MAX_LONG];
-  scoreboard_t scoreboard;
-  command_t command = NOTHING_TO_DO;
   timer_state_t timerState = STOPPED;
-
+  scoreboard_t scoreboard;
   char dataFrame[DATA_FRAME_ROWS][DATA_FRAME_COLUMNS] = {
     { HEADER, 0x7F },
     { COMMAND, 0xDD },            // enviar data
@@ -316,16 +451,19 @@ void loop() {
     switch(main_state){
       case IDLE:
         // A la espera de comando por UART
-        main_state = pool_serial_rx(bufferRx);
+        // main_state = pool_serial_rx(bufferRx);
         if(timerUpdated){
           timerState = updateTimer(&scoreboard);
           refreshScoreboard(&scoreboard, dataFrame, bufferTx);
           main_state = IDLE;
           timerUpdated = false;
         }
+        else if(cmdReceived){
+          main_state = PROCESS_COMMAND;
+        }
         break;
       case PROCESS_COMMAND:
-        command = processCommand(bufferRx);
+        // command = processCommand(bufferRx);
         if(command != NOTHING_TO_DO){ main_state = EXECUTE_COMMAND; }
         else{ main_state = ERROR; }
         break;
@@ -384,6 +522,7 @@ void loop() {
             command = NOTHING_TO_DO;
             break;
         }
+        cmdReceived = false;
         command = NOTHING_TO_DO;
         break;
       case INIT:
