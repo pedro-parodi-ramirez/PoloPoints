@@ -1,5 +1,6 @@
 #include "WiFi.h"
 #include "ESPAsyncWebServer.h"
+#include "SPIFFS.h"
 
 /***************************************************************************/
 /******************************** DEFINES **********************************/
@@ -129,11 +130,16 @@ void setup() {
   // El timer inicia automaticamente con timerBegin, por lo tanto se frena y reinicia contador
   timerStop(Timer0_cfg);
   timerWrite(Timer0_cfg, 0);
-  delay(100);
+  
+  // Inicializar SPIFFS
+  if(!SPIFFS.begin(true)){
+    Serial.println("Error durante el montaje de SPIFFS!");
+    return;
+  }
   
   /* WIFI ACCESS POINT */
   Serial.println("Setting AP (Access Point) ...");
-  if(!WiFi.softAP(ssid, password, 1, false, MAX_CONNECTIONS)){ Serial.println("Something went wrong!"); }
+  if(!WiFi.softAP(ssid, password, 1, false, MAX_CONNECTIONS)){ Serial.println("Error al configurar AP!"); }
 
   IPAddress IP = WiFi.softAPIP();
   Serial.print("AP IP address: ");
@@ -141,6 +147,10 @@ void setup() {
   
   /***************************************************************************/
   /***************************** HTTP REQUEST ********************************/
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(SPIFFS, "/index.html", String(), false);
+  });
+
   server.on("/timer", HTTP_GET, [](AsyncWebServerRequest* request){
     const int paramQty = request->params();
     if(paramQty < 1){
@@ -252,6 +262,12 @@ void setup() {
     }
     cmdReceived = true;
     request->send(STATUS_OK);
+  });
+
+  server.on("/reset", HTTP_GET, [](AsyncWebServerRequest *request){
+    command = RESET_ALL;
+    cmdReceived = true;
+    request->send(SPIFFS, "/index.html", String(), false);
   });
   server.begin();
 
