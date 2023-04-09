@@ -6,8 +6,8 @@
 /******************************** DEFINES **********************************/
 #define DECREASE 0
 #define INCREASE 1
-#define TEAM_1 0
-#define TEAM_2 1
+#define VISITOR 0
+#define LOCAL 1
 #define SECOND_IN_MICROS 1000000
 #define DOT_VALUE 0x80
 #define TX_MAX_LONG 50
@@ -58,10 +58,10 @@ enum timer_state_t{
 };
 
 enum command_t{
-  INC_SCORE_T1,
-  INC_SCORE_T2,
-  DEC_SCORE_T1,
-  DEC_SCORE_T2,
+  INC_SCORE_VISITOR,
+  INC_SCORE_LOCAL,
+  DEC_SCORE_VISITOR,
+  DEC_SCORE_LOCAL,
   INC_CHUKER,
   DEC_CHUKER,
   START_TIMER,
@@ -89,10 +89,10 @@ typedef enum{
   TIMER_MM_UNIDAD,
   TIMER_SS_DECENA,
   TIMER_SS_UNIDAD,
-  SCORE_TEAM2_UNIDAD,
-  SCORE_TEAM2_DECENA,
-  SCORE_TEAM1_UNIDAD,
-  SCORE_TEAM1_DECENA,
+  SCORE_LOCAL_UNIDAD,
+  SCORE_LOCAL_DECENA,
+  SCORE_VISITOR_UNIDAD,
+  SCORE_VISITOR_DECENA,
   CHUKER,
   DATA_END,
   CHECKSUM,
@@ -105,6 +105,7 @@ byte genChecksum(byte dataFrame[DATA_FRAME_ROWS][DATA_FRAME_COLUMNS]);
 void setDataFrame(scoreboard_t* scoreboard, byte dataFrame[DATA_FRAME_ROWS][DATA_FRAME_COLUMNS]);
 unsigned int setBufferTx(byte* bufferTx, byte *dataFrame[DATA_FRAME_ROWS][DATA_FRAME_COLUMNS]);
 timer_state_t updateTimer(scoreboard_t* scoreboard);
+void startTimer(timer_state_t* timerState);
 void stopTimer(timer_state_t* timerState);
 void resetTimer(scoreboard_t* scoreboard, timer_state_t* timerState);
 void resetScoreboard(scoreboard_t* scoreboard, timer_state_t* timerState);
@@ -133,13 +134,13 @@ void setup() {
   
   // Inicializar SPIFFS
   if(!SPIFFS.begin(true)){
-    Serial.println("Error durante el montaje de SPIFFS!");
+    Serial.println("Something went wrong mountint SPIFFS.");
     return;
   }
   
   /* WIFI ACCESS POINT */
   Serial.println("Setting AP (Access Point) ...");
-  if(!WiFi.softAP(ssid, password, 1, false, MAX_CONNECTIONS)){ Serial.println("Error al configurar AP!"); }
+  if(!WiFi.softAP(ssid, password, 1, false, MAX_CONNECTIONS)){ Serial.println("Something went wrong configuring AP!"); }
 
   IPAddress IP = WiFi.softAPIP();
   Serial.print("AP IP address: ");
@@ -154,22 +155,22 @@ void setup() {
   server.on("/timer", HTTP_GET, [](AsyncWebServerRequest* request){
     const int paramQty = request->params();
     if(paramQty < 1){
-      Serial.println("Faltan parametros.");
-      request->send(400);
+      Serial.println("Not enought parameters.");
+      request->send(STATUS_BAD_REQUEST);
       return;
     }
     AsyncWebParameter* p_0 = request->getParam(0);
-    const String cmd = p_0->value();
-    if(cmd == "stop"){
-      Serial.println("Solicitud de frenar el timer");
+    int cmd = (p_0->value()).toInt();
+    if(cmd == STOP_TIMER){
+      Serial.println("Request to stop timer.");
       command = STOP_TIMER;
     }
-    else if(cmd == "start"){
-      Serial.println("Solicitud de iniciar el timer");
+    else if(cmd == START_TIMER){
+      Serial.println("Request to start the timer.");
       command = START_TIMER;
     }
-    else if(cmd == "reset"){
-      Serial.println("Solicitud de resetear el timer");
+    else if(cmd == RESET_TIMER){
+      Serial.println("Request to reset the timer.");
       command = RESET_TIMER;
     }
     // else if(cmd == "set"){
@@ -183,7 +184,7 @@ void setup() {
     //   Serial.println("Solicitud de configurar tiempo del timer");
     // }
     else{
-      Serial.println("Error en parametro->cmd");
+      Serial.println("Parameter error -> cmd");
       request->send(STATUS_BAD_REQUEST);
       return;
     }
@@ -193,46 +194,33 @@ void setup() {
 
   server.on("/score", HTTP_GET, [](AsyncWebServerRequest* request){
     const int paramQty = request->params();
-    if(paramQty < 2){
-      Serial.println("Faltan parametros.");
-      request->send(400);
+    if(paramQty < 1){
+      Serial.println("Not enought parameters.");
+      request->send(STATUS_BAD_REQUEST);
       return;
     }
     AsyncWebParameter* p_0 = request->getParam(0);
-    AsyncWebParameter* p_1 = request->getParam(1);
-    const String cmd = p_0->value();
-    const String param = p_1->value();
-    if(cmd == "up"){
-      if(param == "t1"){
-        Serial.println("Solicitud de incrementar puntaje team_1.");
-        command = INC_SCORE_T1;
-      }
-      else if(param == "t2"){
-        Serial.println("Solicitud de incrementar puntaje team_2.");
-        command = INC_SCORE_T2;
-      }
-      else{
-        Serial.println("Error en parametro->param");
-        request->send(STATUS_BAD_REQUEST);
-      }
+    int cmd = (p_0->value()).toInt();
+    if(cmd == INC_SCORE_VISITOR){
+        Serial.println("Request to increase visitor score.");
+        command = INC_SCORE_VISITOR;
     }
-    else if(cmd == "down"){
-      if(param == "t1"){
-        Serial.println("Solicitud de decrementar puntaje team_1.");
-        command = DEC_SCORE_T1;
-      }
-      else if(param == "t2"){
-        Serial.println("Solicitud de decrementar puntaje team_2.");
-        command = DEC_SCORE_T2;
-      }
-      else{
-        Serial.println("Error en parametro->param");
-        request->send(STATUS_BAD_REQUEST);
-      }
+    else if(cmd == INC_SCORE_LOCAL){
+      Serial.println("Request to increase local score.");
+      command = INC_SCORE_LOCAL;
+    }
+    else if(cmd == DEC_SCORE_VISITOR){
+      Serial.println("Request to decrease visitor score.");
+      command = DEC_SCORE_VISITOR;
+    }
+    else if(cmd == DEC_SCORE_LOCAL){
+      Serial.println("Request to decrease local score.");
+      command = DEC_SCORE_LOCAL;
     }
     else{
-      Serial.println("Error en parametro->cmd");
+      Serial.println("Parameter error -> param");
       request->send(STATUS_BAD_REQUEST);
+      return;
     }
     cmdReceived = true;
     request->send(STATUS_OK);
@@ -241,24 +229,24 @@ void setup() {
   server.on("/chuker", HTTP_GET, [](AsyncWebServerRequest* request){
     const int paramQty = request->params();
     if(paramQty < 1){
-      Serial.println("Faltan parametros.");
-      request->send(400);
+      Serial.println("Not enought parameters.");
+      request->send(STATUS_BAD_REQUEST);
       return;
     }
     AsyncWebParameter* p_0 = request->getParam(0);
-    const String cmd = p_0->value();
-    Serial.println("Param_0 value: " + cmd);
-    if(cmd == "up"){
-      Serial.println("Solicitud de incrementar el chuker.");
+    int cmd = (p_0->value()).toInt();
+    if(cmd == INC_CHUKER){
+      Serial.println("Request to increase chuker.");
       command = INC_CHUKER;
     }
-    else if(cmd == "down"){
-      Serial.println("Solicitud de decrementar el chuker.");
+    else if(cmd == DEC_CHUKER){
+      Serial.println("Request to decrease chuker.");
       command = DEC_CHUKER;
     }
     else{
-      Serial.println("Error en parametro->cmd");
+      Serial.println("Parameter error -> cmd");
       request->send(STATUS_BAD_REQUEST);
+      return;
     }
     cmdReceived = true;
     request->send(STATUS_OK);
@@ -292,10 +280,10 @@ void loop() {
     { TIMER_MM_UNIDAD, 0x30 },
     { TIMER_SS_DECENA, 0x30 },
     { TIMER_SS_UNIDAD, 0x30 },
-    { SCORE_TEAM2_UNIDAD, 0x30 },
-    { SCORE_TEAM2_DECENA, 0x30 },
-    { SCORE_TEAM1_UNIDAD, 0x30 },
-    { SCORE_TEAM1_DECENA, 0x30 },
+    { SCORE_LOCAL_UNIDAD, 0x30 },
+    { SCORE_LOCAL_DECENA, 0x30 },
+    { SCORE_VISITOR_UNIDAD, 0x30 },
+    { SCORE_VISITOR_DECENA, 0x30 },
     { CHUKER, 0x30 },
     { DATA_END, 0xFF },
     { CHECKSUM, 0x9D },
@@ -321,23 +309,23 @@ void loop() {
         break;
       case EXECUTE_COMMAND:
         switch(command){
-          case INC_SCORE_T1:
-            updateScores(INCREASE, TEAM_1, &scoreboard);
+          case INC_SCORE_VISITOR:
+            updateScores(INCREASE, VISITOR, &scoreboard);
             refreshScoreboard(&scoreboard, dataFrame, bufferTx);
             main_state = IDLE;
             break;
-          case INC_SCORE_T2:
-            updateScores(INCREASE, TEAM_2, &scoreboard);
+          case INC_SCORE_LOCAL:
+            updateScores(INCREASE, LOCAL, &scoreboard);
             refreshScoreboard(&scoreboard, dataFrame, bufferTx);
             main_state = IDLE;
             break;
-          case DEC_SCORE_T1:
-            updateScores(DECREASE, TEAM_1, &scoreboard);
+          case DEC_SCORE_VISITOR:
+            updateScores(DECREASE, VISITOR, &scoreboard);
             refreshScoreboard(&scoreboard, dataFrame, bufferTx);
             main_state = IDLE;
             break;
-          case DEC_SCORE_T2:
-            updateScores(DECREASE, TEAM_2, &scoreboard);
+          case DEC_SCORE_LOCAL:
+            updateScores(DECREASE, LOCAL, &scoreboard);
             refreshScoreboard(&scoreboard, dataFrame, bufferTx);
             main_state = IDLE;
             break;
@@ -410,10 +398,10 @@ void setDataFrame(scoreboard_t* scoreboard, byte dataFrame[DATA_FRAME_ROWS][DATA
   dataFrame[TIMER_MM_UNIDAD][VALUE] = (byte)(scoreboard->timer.value.mm % 10 + '0') + DOT_VALUE;
   dataFrame[TIMER_SS_DECENA][VALUE] = (byte)(scoreboard->timer.value.ss / 10 + '0') + DOT_VALUE;
   dataFrame[TIMER_SS_UNIDAD][VALUE] = (byte)(scoreboard->timer.value.ss % 10 + '0');
-  dataFrame[SCORE_TEAM2_UNIDAD][VALUE] = (byte)(scoreboard->score[TEAM_2] % 10 + '0');
-  dataFrame[SCORE_TEAM2_DECENA][VALUE] = (byte)(scoreboard->score[TEAM_2] / 10 + '0');
-  dataFrame[SCORE_TEAM1_UNIDAD][VALUE] = (byte)(scoreboard->score[TEAM_1] % 10 + '0');
-  dataFrame[SCORE_TEAM1_DECENA][VALUE] = (byte)(scoreboard->score[TEAM_1] / 10 + '0');
+  dataFrame[SCORE_VISITOR_UNIDAD][VALUE] = (byte)(scoreboard->score[VISITOR] % 10 + '0');
+  dataFrame[SCORE_VISITOR_DECENA][VALUE] = (byte)(scoreboard->score[VISITOR] / 10 + '0');
+  dataFrame[SCORE_LOCAL_UNIDAD][VALUE] = (byte)(scoreboard->score[LOCAL] % 10 + '0');
+  dataFrame[SCORE_LOCAL_DECENA][VALUE] = (byte)(scoreboard->score[LOCAL] / 10 + '0');
   dataFrame[CHUKER][VALUE] = (byte)(scoreboard->chuker % 10 + '0');
   dataFrame[CHECKSUM][VALUE] = genChecksum(dataFrame);
 }
@@ -469,8 +457,8 @@ void resetTimer(scoreboard_t* scoreboard, timer_state_t* timerState){
 }
 
 void resetScoreboard(scoreboard_t* scoreboard, timer_state_t* timerState){
-  scoreboard->score[TEAM_1] = 0;
-  scoreboard->score[TEAM_2] = 0;
+  scoreboard->score[VISITOR] = 0;
+  scoreboard->score[LOCAL] = 0;
   scoreboard->chuker = 0;
   scoreboard->timer.value.mm = 6;
   scoreboard->timer.value.ss = 50;

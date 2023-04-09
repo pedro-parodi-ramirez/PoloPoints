@@ -11,16 +11,20 @@
 
 <body>
     <h1>ESP32 Web Server</h1>
-    <p><a href="/score?cmd=up&param=t1"><button class="button">UP_T1</button></a></p>
-    <p><a href="/score?cmd=down&param=t1"><button class="button">DOWN_T1</button></a></p>
-    <p><a href="/score?cmd=up&param=t2"><button class="button">UP_T2</button></a></p>
-    <p><a href="/score?cmd=down&param=t2"><button class="button">DOWN_T2</button></a></p>
-    <p><a href="/chuker?cmd=up"><button class="button button">UP_CHUKER</button></a></p>
-    <p><a href="/chuker?cmd=down"><button class="button button2">DOWN_CHUKER</button></a></p>
-    <p><a href="/timer?cmd=start"><button class="button">START_TIMER</button></a></p>
-    <p><a href="/timer?cmd=stop"><button class="button">STOP_TIMER</button></a></p>
-    <p><a href="/timer?cmd=reset"><button class="button">RESET_TIMER</button></a></p>
-    <p><a href="/reset"><button class="button">RESET_ALL</button></a></p>
+    <span class="buttonContainer">
+        <a href="/score?cmd=0"><button class="button">UP_VISITOR</button></a>
+        <a href="/score?cmd=2"><button class="button">DOWN_VISITOR</button></a>
+        <a href="/score?cmd=1"><button class="button">UP_LOCAL</button></a>
+        <a href="/score?cmd=3"><button class="button">DOWN_LOCAL</button></a>
+        <a href="/chuker?cmd=4"><button class="button">UP_CHUKER</button></a>
+        <a href="/chuker?cmd=5"><button class="button">DOWN_CHUKER</button></a>
+    </span>
+    <span class="buttonContainer">
+        <a href="/timer?cmd=6"><button class="button">START_TIMER</button></a>
+        <a href="/timer?cmd=7"><button class="button">STOP_TIMER</button></a>
+        <a href="/timer?cmd=8"><button class="button">RESET_TIMER</button></a>
+        <a href="/reset"><button class="button">RESET_ALL</button></a>
+    </span>
 </body>
 
 </html>
