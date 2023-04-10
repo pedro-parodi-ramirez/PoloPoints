@@ -150,9 +150,14 @@ void setup() {
     request->send(SPIFFS, "/index.html", String(), false);
   });
 
-  // Route to load style.css file
+  // Ruta a style.css
   server.on("/style.css", HTTP_GET, [](AsyncWebServerRequest *request){
     request->send(SPIFFS, "/style.css", "text/css");
+  });
+
+  // Ruta a index.js
+  server.on("/index.js", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(SPIFFS, "/index.js", "text/css");
   });
 
   server.on("/timer", HTTP_GET, [](AsyncWebServerRequest* request){

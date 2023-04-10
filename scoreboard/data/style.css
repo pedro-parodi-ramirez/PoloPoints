@@ -20,6 +20,11 @@ h3{
 
 .col{
   display: inline-block;
+  margin: 0 0 1.5rem 0;
+}
+
+.col-4{
+  display: inline-block;
   width: 30%;
   margin: 0 0 1.5rem 0;
 }
@@ -42,4 +47,10 @@ button{
   border: 2px solid #00008B;
   background-color: #008CBA;;  
   padding: 4px 8px;
+}
+
+.value{
+  margin: 1rem 0;
+  font-size: 2rem;
+  font-weight: bold;
 }

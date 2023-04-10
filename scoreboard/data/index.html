@@ -13,30 +13,47 @@
     <h1>Scoreboard</h1>
     <hr>
     <div class="row">
-        <div class="col align-items-start">
+        <div class="col-4 align-items-start">
             <h3>Visitor</h3>
-            <a href="/score?cmd=0"><button>Up</button></a>
-            <a href="/score?cmd=2"><button>Down</button></a>
+            <a id="up-visitor"><button>Up</button></a>
+            <a id="down-visitor"><button>Down</button></a>
+            <div class="value">
+                <output id="visitor">00</output>
+            </div>
         </div>
-        <div class="col align-items-middle">
+        <div class="col-4 align-items-middle">
             <h3>Chuker</h3>
-            <a href="/score?cmd=1"><button>Up</button></a>
-            <a href="/score?cmd=3"><button>Down</button></a>
+            <a id="up-chuker"><button>Up</button></a>
+            <a id="down-chuker"><button>Down</button></a>
+            <div class="value">
+                <output id="chuker">00</output>
+            </div>
         </div>
-        <div class="col align-items-end">
+        <div class="col-4 align-items-end">
             <h3>Local</h3>
-            <a href="/chuker?cmd=4"><button>Up</button></a>
-            <a href="/chuker?cmd=5"><button>Down</button></a>
+            <a id="up-local"><button>Up</button></a>
+            <a id="down-local"><button>Down</button></a>
+            <div class="value">
+                <output id="local">00</output>
+            </div>
         </div>
     </div>
     <div class="row">
         <h3>Timer</h3>
-        <a href="/timer?cmd=6"><button>Start</button></a>
-        <a href="/timer?cmd=7"><button>Stop</button></a>
-        <a href="/timer?cmd=8"><button>Reset</button></a>
+        <div>
+            <a id="start-timer"><button>Start</button></a>
+            <a id="stop-timer"><button>Stop</button></a>
+            <a id="reset-timer"><button>Reset</button></a>
+        </div>
+        <div class="value">
+            <output id="timer-mm">00</output>
+            <span>:</span>
+            <output id="timer-ss">00</output>
+        </div>
     </div>
     <hr>
-    <a href="/reset"><button>Reset</button></a>
+    <a id="reset-all"><button>Reset</button></a>
+    <script src="index.js"></script>
 </body>
 
 </html>
