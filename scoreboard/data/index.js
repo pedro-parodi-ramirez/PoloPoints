@@ -169,3 +169,16 @@ function setScoreboardValues(dataString){
     timerMMValue.value = data[dataIndex.TIMER_MM];
     timerSSValue.value = data[dataIndex.TIMER_SS];
 }
+
+setInterval(async() => {
+    const rawResponse = await fetch(`http://${IP}/scoreboard`, {
+        headers: {
+            'Content-Type': 'text/plain'
+        },
+        method: 'GET'
+    });
+    if (rawResponse.status === STATUS.OK) {
+        const response = await rawResponse.text();
+        setScoreboardValues(response);
+    }
+}, 500);
