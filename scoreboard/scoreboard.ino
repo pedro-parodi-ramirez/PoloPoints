@@ -150,6 +150,11 @@ void setup() {
     request->send(SPIFFS, "/index.html", String(), false);
   });
 
+  // Route to load style.css file
+  server.on("/style.css", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(SPIFFS, "/style.css", "text/css");
+  });
+
   server.on("/timer", HTTP_GET, [](AsyncWebServerRequest* request){
     const int paramQty = request->params();
     if(paramQty < 1){
