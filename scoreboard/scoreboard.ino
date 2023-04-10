@@ -18,7 +18,7 @@
 const byte DATA_FRAME_ROWS = 20;      // Filas de la matriz dataFrame a enviar a placa controladora. Filas -> header, comando, dato, ...
 const byte DATA_FRAME_COLUMNS = 2;    // Columnas de la matriz dataFrame a enviar a placa controladora (2 columnas -> pares [key, value])
 const int VALUE = 1;                  // Columna en la que se encuentra el valor del par [key, value]
-bool timerUpdated = false;
+bool timerValueUpdate = false;
 bool cmdReceived = false;
 const char* ssid = "ESP32-AccessPoint";
 const char* password =  "12345678";
@@ -42,20 +42,19 @@ struct scoreboard_t{
     _timer_t value;
     _timer_t initValue; // se usa para el comando reset_timer
   } timer;
-};
+} scoreboard;
 
 enum main_state_t{
   IDLE,
-  EXECUTE_COMMAND,
-  INIT,
-  ERROR
+  REFRESH_SCOREBOARD,
+  INIT
 } main_state = INIT;
 
 enum timer_state_t{
   RUNNING,
   STOPPED,
   FINISHED
-};
+} timer_state = STOPPED;
 
 enum command_t{
   INC_SCORE_VISITOR,
@@ -67,9 +66,8 @@ enum command_t{
   START_TIMER,
   STOP_TIMER,
   RESET_TIMER,
-  RESET_ALL,
-  NOTHING_TO_DO
-} command = NOTHING_TO_DO;
+  RESET_ALL
+};
 
 typedef enum{
   STATUS_OK = 200,
@@ -105,19 +103,19 @@ byte genChecksum(byte dataFrame[DATA_FRAME_ROWS][DATA_FRAME_COLUMNS]);
 void setDataFrame(scoreboard_t* scoreboard, byte dataFrame[DATA_FRAME_ROWS][DATA_FRAME_COLUMNS]);
 unsigned int setBufferTx(byte* bufferTx, byte *dataFrame[DATA_FRAME_ROWS][DATA_FRAME_COLUMNS]);
 timer_state_t updateTimer(scoreboard_t* scoreboard);
-void startTimer(timer_state_t* timerState);
-void stopTimer(timer_state_t* timerState);
-void resetTimer(scoreboard_t* scoreboard, timer_state_t* timerState);
-void resetScoreboard(scoreboard_t* scoreboard, timer_state_t* timerState);
-void updateScores(int increaseScore, int team, scoreboard_t* scoreboard);
-void updateChuker(int increaseScore, scoreboard_t* scoreboard);
+void startTimer();
+void stopTimer();
+void resetTimer();
+void updateScores(int action, int team);
+void updateChuker(int action);
+void resetScoreboard();
 void refreshScoreboard(scoreboard_t* scoreboard, byte dataFrame[DATA_FRAME_ROWS][DATA_FRAME_COLUMNS], byte* bufferTx);
 
 /***************************************************************************/
 /****************************** IRQ_HANDLERS *******************************/
 void IRAM_ATTR Timer0_ISR()
 {
-  timerUpdated = true;
+  timerValueUpdate = true;
 }
 
 /**************************************************************** SETUP ****************************************************************/
@@ -161,17 +159,17 @@ void setup() {
     }
     AsyncWebParameter* p_0 = request->getParam(0);
     int cmd = (p_0->value()).toInt();
-    if(cmd == STOP_TIMER){
-      Serial.println("Request to stop timer.");
-      command = STOP_TIMER;
-    }
-    else if(cmd == START_TIMER){
+    if(cmd == START_TIMER){
       Serial.println("Request to start the timer.");
-      command = START_TIMER;
+      startTimer();
+    }
+    else if(cmd == STOP_TIMER){
+      Serial.println("Request to stop the timer.");
+      stopTimer();
     }
     else if(cmd == RESET_TIMER){
       Serial.println("Request to reset the timer.");
-      command = RESET_TIMER;
+      resetTimer();
     }
     // else if(cmd == "set"){
     //   if(paramQty < 2){
@@ -189,7 +187,8 @@ void setup() {
       return;
     }
     cmdReceived = true;
-    request->send(STATUS_OK);
+    // request->send(STATUS_OK);
+    request->send(SPIFFS, "/index.html", String(), false);
   });
 
   server.on("/score", HTTP_GET, [](AsyncWebServerRequest* request){
@@ -203,27 +202,28 @@ void setup() {
     int cmd = (p_0->value()).toInt();
     if(cmd == INC_SCORE_VISITOR){
         Serial.println("Request to increase visitor score.");
-        command = INC_SCORE_VISITOR;
+        updateScores(INCREASE, VISITOR);
     }
     else if(cmd == INC_SCORE_LOCAL){
       Serial.println("Request to increase local score.");
-      command = INC_SCORE_LOCAL;
+      updateScores(INCREASE, LOCAL);
     }
     else if(cmd == DEC_SCORE_VISITOR){
       Serial.println("Request to decrease visitor score.");
-      command = DEC_SCORE_VISITOR;
+      updateScores(DECREASE, VISITOR);
     }
     else if(cmd == DEC_SCORE_LOCAL){
       Serial.println("Request to decrease local score.");
-      command = DEC_SCORE_LOCAL;
+      updateScores(DECREASE, LOCAL);
     }
     else{
-      Serial.println("Parameter error -> param");
+      Serial.println("Parameter error -> cmd");
       request->send(STATUS_BAD_REQUEST);
       return;
     }
     cmdReceived = true;
-    request->send(STATUS_OK);
+    // request->send(STATUS_OK);
+    request->send(SPIFFS, "/index.html", String(), false);
   });
 
   server.on("/chuker", HTTP_GET, [](AsyncWebServerRequest* request){
@@ -237,11 +237,11 @@ void setup() {
     int cmd = (p_0->value()).toInt();
     if(cmd == INC_CHUKER){
       Serial.println("Request to increase chuker.");
-      command = INC_CHUKER;
+      updateChuker(INCREASE);
     }
     else if(cmd == DEC_CHUKER){
       Serial.println("Request to decrease chuker.");
-      command = DEC_CHUKER;
+      updateChuker(DECREASE);
     }
     else{
       Serial.println("Parameter error -> cmd");
@@ -249,12 +249,15 @@ void setup() {
       return;
     }
     cmdReceived = true;
-    request->send(STATUS_OK);
+    // request->send(STATUS_OK);
+    request->send(SPIFFS, "/index.html", String(), false);
   });
 
   server.on("/reset", HTTP_GET, [](AsyncWebServerRequest *request){
-    command = RESET_ALL;
+    Serial.println("Request to reset all scoreboard values.");
+    resetScoreboard();
     cmdReceived = true;
+    // request->send(STATUS_OK);
     request->send(SPIFFS, "/index.html", String(), false);
   });
   server.begin();
@@ -265,8 +268,6 @@ void setup() {
 /************************************************************ INFINITE LOOP ************************************************************/
 void loop() {
   byte bufferTx[TX_MAX_LONG];
-  timer_state_t timerState = STOPPED;
-  scoreboard_t scoreboard;
   byte dataFrame[DATA_FRAME_ROWS][DATA_FRAME_COLUMNS] = {
     { HEADER, 0x7F },
     { COMMAND, 0xDD },            // enviar data
@@ -296,81 +297,23 @@ void loop() {
     switch(main_state){
       case IDLE:
         // Pasado un segundo, con el timer activo, se actualiza el tablero
-        if(timerUpdated){
-          timerState = updateTimer(&scoreboard);
-          refreshScoreboard(&scoreboard, dataFrame, bufferTx);
-          main_state = IDLE;
-          timerUpdated = false;
+        if(timerValueUpdate){
+          timerValueUpdate = false;
+          timer_state = updateTimer();
+          main_state = REFRESH_SCOREBOARD;
         }
         // A la espera de comando por HTTP Request
         if(cmdReceived){
-          main_state = EXECUTE_COMMAND;
+          cmdReceived = false;
+          main_state = REFRESH_SCOREBOARD;
         }
         break;
-      case EXECUTE_COMMAND:
-        switch(command){
-          case INC_SCORE_VISITOR:
-            updateScores(INCREASE, VISITOR, &scoreboard);
-            refreshScoreboard(&scoreboard, dataFrame, bufferTx);
-            main_state = IDLE;
-            break;
-          case INC_SCORE_LOCAL:
-            updateScores(INCREASE, LOCAL, &scoreboard);
-            refreshScoreboard(&scoreboard, dataFrame, bufferTx);
-            main_state = IDLE;
-            break;
-          case DEC_SCORE_VISITOR:
-            updateScores(DECREASE, VISITOR, &scoreboard);
-            refreshScoreboard(&scoreboard, dataFrame, bufferTx);
-            main_state = IDLE;
-            break;
-          case DEC_SCORE_LOCAL:
-            updateScores(DECREASE, LOCAL, &scoreboard);
-            refreshScoreboard(&scoreboard, dataFrame, bufferTx);
-            main_state = IDLE;
-            break;
-          case INC_CHUKER:
-            updateChuker(INCREASE, &scoreboard);
-            refreshScoreboard(&scoreboard, dataFrame, bufferTx);
-            main_state = IDLE;
-            break;
-          case DEC_CHUKER:
-            updateChuker(DECREASE, &scoreboard);
-            refreshScoreboard(&scoreboard, dataFrame, bufferTx);
-            main_state = IDLE;
-            break;
-          case START_TIMER:
-            startTimer(&timerState);
-            main_state = IDLE;
-            break;
-          case STOP_TIMER:
-            stopTimer(&timerState);
-            main_state = IDLE;
-            break;
-          case RESET_TIMER:
-            resetTimer(&scoreboard, &timerState);
-            refreshScoreboard(&scoreboard, dataFrame, bufferTx);
-            main_state = IDLE;
-            break;
-          case RESET_ALL:
-            // Lleva todo el tablero a valores de inicio y frena el timer
-            resetScoreboard(&scoreboard, &timerState);
-            refreshScoreboard(&scoreboard, dataFrame, bufferTx);
-            main_state = IDLE;
-            break;
-          default:
-            command = NOTHING_TO_DO;
-            break;
-        }
-        cmdReceived = false;
-        command = NOTHING_TO_DO;
-        break;
-      case INIT:
+      case REFRESH_SCOREBOARD:
         refreshScoreboard(&scoreboard, dataFrame, bufferTx);
         main_state = IDLE;
         break;
-      case ERROR:
-        Serial.println("Error: not known command");
+      case INIT:
+        refreshScoreboard(&scoreboard, dataFrame, bufferTx);
         main_state = IDLE;
         break;
       default:
@@ -416,77 +359,77 @@ unsigned int setBufferTx(byte* bufferTx, byte dataFrame[DATA_FRAME_ROWS][DATA_FR
   return bytes_to_transfer;
 }
 
-timer_state_t updateTimer(scoreboard_t* scoreboard){
-  scoreboard->timer.value.ss--;
-  if(scoreboard->timer.value.mm == 0 && scoreboard->timer.value.ss == 0){
+timer_state_t updateTimer(){
+  scoreboard.timer.value.ss--;
+  if(scoreboard.timer.value.mm == 0 && scoreboard.timer.value.ss == 0){
     // Detener y resetearlo el timer si llego a 00:00
     timerStop(Timer0_cfg);
     timerWrite(Timer0_cfg, 0);
     return FINISHED;
   }
-  else if(scoreboard->timer.value.ss < 0){
+  else if(scoreboard.timer.value.ss < 0){
     // Si pasaron 60 segundos, decrementar minutos y resetear segundos.
-    scoreboard->timer.value.ss = 59;
-    if(scoreboard->timer.value.mm > 0){ scoreboard->timer.value.mm--; }
+    scoreboard.timer.value.ss = 59;
+    if(scoreboard.timer.value.mm > 0){ scoreboard.timer.value.mm--; }
   }
   return RUNNING;
 }
 
-void startTimer(timer_state_t* timerState){
-  if(*timerState == STOPPED){
+void startTimer(){
+  if(timer_state == STOPPED){
     timerStart(Timer0_cfg);
-    *timerState = RUNNING;
+    timer_state = RUNNING;
   }
 }
 
-void stopTimer(timer_state_t* timerState){
-  if(*timerState == RUNNING){
+void stopTimer(){
+  if(timer_state == RUNNING){
     timerStop(Timer0_cfg);
-    *timerState = STOPPED;
+    timer_state = STOPPED;
   }
 }
 
-void resetTimer(scoreboard_t* scoreboard, timer_state_t* timerState){
-  scoreboard->timer.value.mm = scoreboard->timer.initValue.mm;
-  scoreboard->timer.value.ss = scoreboard->timer.initValue.ss;
+void resetTimer(){
+  scoreboard.timer.value.mm = scoreboard.timer.initValue.mm;
+  scoreboard.timer.value.ss = scoreboard.timer.initValue.ss;
   
   // Resetear y frenar el timer
   timerStop(Timer0_cfg);
   timerWrite(Timer0_cfg, 0);
-  *timerState = STOPPED;
+  timer_state = STOPPED;
 }
 
-void resetScoreboard(scoreboard_t* scoreboard, timer_state_t* timerState){
-  scoreboard->score[VISITOR] = 0;
-  scoreboard->score[LOCAL] = 0;
-  scoreboard->chuker = 0;
-  scoreboard->timer.value.mm = 6;
-  scoreboard->timer.value.ss = 50;
+void updateScores(int action, int team){
+  if(action == INCREASE){
+    if(scoreboard.score[team] < 99) { scoreboard.score[team]++; }
+    else { scoreboard.score[team] = 0; }
+  }
+  else{
+    if(scoreboard.score[team] > 0) { scoreboard.score[team]--; }
+  }
+}
+
+void updateChuker(int action){
+  if(action == INCREASE){
+    if(scoreboard.chuker < 9) { scoreboard.chuker++; }
+    else { scoreboard.chuker = 0; }
+  }
+  else{
+    if(scoreboard.chuker > 0) { scoreboard.chuker--; }
+  }
+}
+
+void resetScoreboard(){
+  scoreboard.score[VISITOR] = 0;
+  scoreboard.score[LOCAL] = 0;
+  scoreboard.chuker = 0;
+  scoreboard.timer.value.mm = 6;
+  scoreboard.timer.value.ss = 50;
   
   // Resetear y frenar el timer
   timerStop(Timer0_cfg);
   timerWrite(Timer0_cfg, 0);
-  *timerState = STOPPED;
-}
-
-void updateScores(int increaseScore, int team, scoreboard_t* scoreboard){
-  if(increaseScore == INCREASE){
-    if(scoreboard->score[team] < 99) { scoreboard->score[team]++; }
-    else { scoreboard->score[team] = 0; }
-  }
-  else{
-    if(scoreboard->score[team] > 0) { scoreboard->score[team]--; }
-  }
-}
-
-void updateChuker(int increaseScore, scoreboard_t* scoreboard){
-  if(increaseScore == INCREASE){
-    if(scoreboard->chuker < 9) { scoreboard->chuker++; }
-    else { scoreboard->chuker = 0; }
-  }
-  else{
-    if(scoreboard->chuker > 0) { scoreboard->chuker--; }
-  }
+  timer_state = STOPPED;
 }
 
 void refreshScoreboard(scoreboard_t* scoreboard, byte dataFrame[DATA_FRAME_ROWS][DATA_FRAME_COLUMNS], byte* bufferTx){
