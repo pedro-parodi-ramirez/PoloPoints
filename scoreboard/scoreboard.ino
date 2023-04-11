@@ -56,8 +56,8 @@ enum main_state_t
 
 enum timer_state_t
 {
-  RUNNING,
   STOPPED,
+  RUNNING,
   FINISHED
 } timer_state = STOPPED;
 
@@ -78,6 +78,7 @@ enum command_t
 typedef enum
 {
   STATUS_OK = 200,
+  STATUS_ACCEPTED = 202,
   STATUS_BAD_REQUEST = 400,
   STATUS_NOT_FOUND = 404
 };
@@ -185,14 +186,21 @@ void setup()
     if(cmd == START_TIMER){
       Serial.println("Request to start the timer.");
       startTimer();
+      cmdReceived = true;
+      request->send(STATUS_ACCEPTED);
     }
     else if(cmd == STOP_TIMER){
       Serial.println("Request to stop the timer.");
       stopTimer();
+      cmdReceived = true;
+      request->send(STATUS_ACCEPTED);
     }
     else if(cmd == RESET_TIMER){
       Serial.println("Request to reset the timer.");
       resetTimer();
+      String data = scoreboardToString();
+      cmdReceived = true;
+      request->send(STATUS_ACCEPTED, "text/plain", data);
     }
     // else if(cmd == "set"){
     //   if(paramQty < 2){
@@ -207,11 +215,7 @@ void setup()
     else{
       Serial.println("Parameter error -> cmd");
       request->send(STATUS_BAD_REQUEST);
-      return;
     }
-    cmdReceived = true;
-    // request->send(STATUS_OK);
-    request->send(SPIFFS, "/index.html", String(), false);
   });
 
   server.on("/score", HTTP_GET, [](AsyncWebServerRequest *request){
@@ -458,44 +462,20 @@ void updateScores(int action, int team)
 {
   if (action == INCREASE)
   {
-    if (scoreboard.score[team] < 99)
-    {
-      scoreboard.score[team]++;
-    }
-    else
-    {
-      scoreboard.score[team] = 0;
-    }
+    if (scoreboard.score[team] < 99){ scoreboard.score[team]++; }
+    else{ scoreboard.score[team] = 0; }
   }
-  else
-  {
-    if (scoreboard.score[team] > 0)
-    {
-      scoreboard.score[team]--;
-    }
-  }
+  else if (scoreboard.score[team] > 0){ scoreboard.score[team]--; }
 }
 
 void updateChuker(int action)
 {
   if (action == INCREASE)
   {
-    if (scoreboard.chuker < 9)
-    {
-      scoreboard.chuker++;
-    }
-    else
-    {
-      scoreboard.chuker = 0;
-    }
+    if (scoreboard.chuker < 9) { scoreboard.chuker++; }
+    else{ scoreboard.chuker = 0; }
   }
-  else
-  {
-    if (scoreboard.chuker > 0)
-    {
-      scoreboard.chuker--;
-    }
-  }
+  else if (scoreboard.chuker > 0){ scoreboard.chuker--; }
 }
 
 void resetScoreboard()
@@ -503,8 +483,8 @@ void resetScoreboard()
   scoreboard.score[VISITOR] = 0;
   scoreboard.score[LOCAL] = 0;
   scoreboard.chuker = 0;
-  scoreboard.timer.value.mm = 6;
-  scoreboard.timer.value.ss = 50;
+  scoreboard.timer.value.mm = scoreboard.timer.initValue.mm;
+  scoreboard.timer.value.ss = scoreboard.timer.initValue.ss;
 
   // Resetear y frenar el timer
   timerStop(Timer0_cfg);
@@ -526,5 +506,6 @@ String scoreboardToString(){
   s += "," + String(scoreboard.chuker);
   s += "," + String(scoreboard.timer.value.mm);
   s += "," + String(scoreboard.timer.value.ss);
+  s += "," + String(timer_state);
   return s;
 }
