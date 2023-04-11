@@ -176,6 +176,7 @@ void setup()
 
   server.on("/timer", HTTP_GET, [](AsyncWebServerRequest *request){
     const int paramQty = request->params();
+    String data;
     if(paramQty < 1){
       Serial.println("Not enought parameters.");
       request->send(STATUS_BAD_REQUEST);
@@ -197,9 +198,9 @@ void setup()
     }
     else if(cmd == RESET_TIMER){
       Serial.println("Request to reset the timer.");
-      resetTimer();
-      String data = scoreboardToString();
       cmdReceived = true;
+      resetTimer();
+      data = scoreboardToString();
       request->send(STATUS_ACCEPTED, "text/plain", data);
     }
     // else if(cmd == "set"){
@@ -220,6 +221,7 @@ void setup()
 
   server.on("/score", HTTP_GET, [](AsyncWebServerRequest *request){
     const int paramQty = request->params();
+    String data;
     if(paramQty < 1){
       Serial.println("Not enought parameters.");
       request->send(STATUS_BAD_REQUEST);
@@ -249,12 +251,13 @@ void setup()
       return;
     }
     cmdReceived = true;
-    // request->send(STATUS_OK);
-    request->send(SPIFFS, "/index.html", String(), false);
+    data = scoreboardToString();
+    request->send(STATUS_ACCEPTED, "text/plain", data);
   });
 
   server.on("/chuker", HTTP_GET, [](AsyncWebServerRequest *request){
     const int paramQty = request->params();
+    String data;
     if(paramQty < 1){
       Serial.println("Not enought parameters.");
       request->send(STATUS_BAD_REQUEST);
@@ -276,16 +279,17 @@ void setup()
       return;
     }
     cmdReceived = true;
-    // request->send(STATUS_OK);
-    request->send(SPIFFS, "/index.html", String(), false);
+    data = scoreboardToString();
+    request->send(STATUS_ACCEPTED, "text/plain", data);
   });
 
   server.on("/reset", HTTP_GET, [](AsyncWebServerRequest *request){
+    String data;
     Serial.println("Request to reset all scoreboard values.");
     resetScoreboard();
     cmdReceived = true;
-    // request->send(STATUS_OK);
-    request->send(SPIFFS, "/index.html", String(), false);
+    data = scoreboardToString();
+    request->send(STATUS_ACCEPTED, "text/plain", data);
   });
 
   server.on("/scoreboard", HTTP_GET, [](AsyncWebServerRequest *request){

@@ -64,6 +64,10 @@ btnUpVisitor.addEventListener('click', async () => {
         },
         method: 'GET'
     });
+    if (rawResponse.status === STATUS.ACCEPTED) {
+        const response = await rawResponse.text();
+        setScoreboardValues(response);
+    }
 });
 
 btnDownVisitor.addEventListener('click', async () => {
@@ -73,6 +77,10 @@ btnDownVisitor.addEventListener('click', async () => {
         },
         method: 'GET'
     });
+    if (rawResponse.status === STATUS.ACCEPTED) {
+        const response = await rawResponse.text();
+        setScoreboardValues(response);
+    }
 });
 
 // Local
@@ -83,6 +91,10 @@ btnUpLocal.addEventListener('click', async () => {
         },
         method: 'GET'
     });
+    if (rawResponse.status === STATUS.ACCEPTED) {
+        const response = await rawResponse.text();
+        setScoreboardValues(response);
+    }
 });
 
 btnDownLocal.addEventListener('click', async () => {
@@ -92,6 +104,10 @@ btnDownLocal.addEventListener('click', async () => {
         },
         method: 'GET'
     });
+    if (rawResponse.status === STATUS.ACCEPTED) {
+        const response = await rawResponse.text();
+        setScoreboardValues(response);
+    }
 });
 
 // Chuker
@@ -102,6 +118,10 @@ btnUpChuker.addEventListener('click', async () => {
         },
         method: 'GET'
     });
+    if (rawResponse.status === STATUS.ACCEPTED) {
+        const response = await rawResponse.text();
+        setScoreboardValues(response);
+    }
 });
 
 btnDownChuker.addEventListener('click', async () => {
@@ -111,6 +131,10 @@ btnDownChuker.addEventListener('click', async () => {
         },
         method: 'GET'
     });
+    if (rawResponse.status === STATUS.ACCEPTED) {
+        const response = await rawResponse.text();
+        setScoreboardValues(response);
+    }
 });
 
 // Timer
@@ -177,6 +201,10 @@ btnResetAll.addEventListener('click', async () => {
         },
         method: 'GET'
     });
+    if (rawResponse.status === STATUS.ACCEPTED) {
+        const response = await rawResponse.text();
+        setScoreboardValues(response);
+    }
 });
 
 /* -------------------------------------------------------------------------------------------------------------- */
