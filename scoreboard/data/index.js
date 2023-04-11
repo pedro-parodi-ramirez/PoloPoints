@@ -26,6 +26,10 @@ const localValue = document.getElementById('local');
 const chukerValue = document.getElementById('chuker');
 const timerMMValue = document.getElementById('timer-mm');
 const timerSSValue = document.getElementById('timer-ss');
+const btnUpMinute = document.getElementById('up-minute');
+const btnDownMinute = document.getElementById('down-minute');
+const btnUpSecond = document.getElementById('up-second');
+const btnDownSecond = document.getElementById('down-second');
 const IP = "192.168.4.1";
 const RUNNING = 1; // estado para timer activo
 let refreshTimer = undefined;
@@ -158,6 +162,7 @@ btnStartTimer.addEventListener('click', async () => {
                 });
                 const response = await innerRawResponse.text();
                 setScoreboardValues(response);
+                setOptions();
             }, 200);
             timerState = timerStatus.RUNNING;
         }
@@ -175,6 +180,7 @@ btnStopTimer.addEventListener('click', async () => {
         if (rawResponse.status === STATUS.ACCEPTED) {
             clearInterval(refreshTimer);
             timerState = timerStatus.STOPPED;
+            setOptions();
         }
     }
 });
@@ -191,9 +197,39 @@ btnResetTimer.addEventListener('click', async () => {
         setScoreboardValues(response);
         clearInterval(refreshTimer);
         timerState = timerStatus.STOPPED;
+        setOptions();
     }
 });
 
+btnUpMinute.addEventListener('click', async() => {
+    if(timerMMValue.value < 99){
+        timerMMValue.value = (parseInt(timerMMValue.value) + 1).toString().padStart(2,'0');
+        sendTimerData();
+    }    
+});
+
+btnDownMinute.addEventListener('click', async() => {
+    if(timerMMValue.value > 0){
+        timerMMValue.value = (parseInt(timerMMValue.value) - 1).toString().padStart(2,'0');
+        sendTimerData();
+    }
+});
+
+btnUpSecond.addEventListener('click', async() => {
+    if(timerSSValue.value < 99){
+        timerSSValue.value = (parseInt(timerSSValue.value) + 1).toString().padStart(2,'0');
+        sendTimerData();
+    }
+});
+
+btnDownSecond.addEventListener('click', async() => {
+    if(timerSSValue.value > 0){
+        timerSSValue.value = (parseInt(timerSSValue.value) - 1).toString().padStart(2,'0');
+        sendTimerData();
+    }
+});
+
+// Reset all
 btnResetAll.addEventListener('click', async () => {
     const rawResponse = await fetch(`http://${IP}/reset`, {
         headers: {
@@ -204,6 +240,8 @@ btnResetAll.addEventListener('click', async () => {
     if (rawResponse.status === STATUS.ACCEPTED) {
         const response = await rawResponse.text();
         setScoreboardValues(response);
+        setOptions();
+        clearInterval(refreshTimer);
     }
 });
 
@@ -221,6 +259,7 @@ window.addEventListener('load', async () => {
     if (rawResponse.status === STATUS.OK) {
         const response = await rawResponse.text();
         setScoreboardValues(response);
+        setOptions();
     }
 });
 
@@ -235,4 +274,43 @@ function setScoreboardValues(dataString) {
     timerMMValue.value = data[dataIndex.TIMER_MM].padStart(2,'0');
     timerSSValue.value = data[dataIndex.TIMER_SS].padStart(2,'0');
     timerState = parseInt(data[dataIndex.TIMER_STATE]);
+}
+
+async function sendTimerData(){
+    const rawResponse = await fetch(`http://${IP}/timer?mm=${timerMMValue.value}&ss=${timerSSValue.value}`, {
+        headers: {
+            'Content-Type': 'text/plain',
+        },
+        method: 'POST',
+    });
+    console.log("Data sent!");
+    if(rawResponse.status !== STATUS.ACCEPTED){ console.log("Han error has ocurred updating the timer");}
+}
+
+function setOptions(){
+    console.log("timerState", timerState);
+    if(timerState === timerStatus.STOPPED){
+        btnStopTimer.disabled = true;
+        btnStartTimer.disabled = false;
+        btnUpMinute.disabled = false;
+        btnDownMinute.disabled = false;
+        btnUpSecond.disabled = false;
+        btnDownSecond.disabled = false;
+    }
+    else if(timerState === timerStatus.RUNNING){
+        btnStopTimer.disabled = false;
+        btnStartTimer.disabled = true;
+        btnUpMinute.disabled = true;
+        btnDownMinute.disabled = true;
+        btnUpSecond.disabled = true;
+        btnDownSecond.disabled = true;
+    }
+    else{
+        btnStopTimer.disabled = true;
+        btnStartTimer.disabled = true;
+        btnUpMinute.disabled = true;
+        btnDownMinute.disabled = true;
+        btnUpSecond.disabled = true;
+        btnDownSecond.disabled = true;
+    }
 }

@@ -49,6 +49,13 @@ button{
   padding: 4px 8px;
 }
 
+button:disabled,
+button[disabled]{
+  border: 1px solid #999999;
+  background-color: #cccccc;
+  color: #666666;
+}
+
 .value{
   margin: 1rem 0;
   font-size: 2rem;

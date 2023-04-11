@@ -10,6 +10,7 @@
 #define LOCAL 1
 #define SECOND_IN_MICROS 1000000
 #define DOT_VALUE 0x80
+#define RX_MAX_LONG 50
 #define TX_MAX_LONG 50
 #define MAX_CONNECTIONS 1
 
@@ -18,6 +19,7 @@
 const byte DATA_FRAME_ROWS = 20;   // Filas de la matriz dataFrame a enviar a placa controladora. Filas -> header, comando, dato, ...
 const byte DATA_FRAME_COLUMNS = 2; // Columnas de la matriz dataFrame a enviar a placa controladora (2 columnas -> pares [key, value])
 const int VALUE = 1;               // Columna en la que se encuentra el valor del par [key, value]
+byte bufferRx[RX_MAX_LONG];
 bool timerValueUpdate = false;
 bool cmdReceived = false;
 const char *ssid = "ESP32-AccessPoint";
@@ -115,6 +117,7 @@ unsigned int setBufferTx(byte *bufferTx, byte *dataFrame[DATA_FRAME_ROWS][DATA_F
 timer_state_t updateTimer(scoreboard_t *scoreboard);
 void startTimer();
 void stopTimer();
+bool setTimerValue(int mm, int ss);
 void resetTimer();
 void updateScores(int action, int team);
 void updateChuker(int action);
@@ -203,18 +206,30 @@ void setup()
       data = scoreboardToString();
       request->send(STATUS_ACCEPTED, "text/plain", data);
     }
-    // else if(cmd == "set"){
-    //   if(paramQty < 2){
-    //     request->send(400);
-    //     return;
-    //   }
-    //   AsyncWebParameter* p_1 = request->getParam(1);
-    //   const String param = p_1->value();
-    //   Serial.println("Param_1 value: " + param);
-    //   Serial.println("Solicitud de configurar tiempo del timer");
-    // }
     else{
       Serial.println("Parameter error -> cmd");
+      request->send(STATUS_BAD_REQUEST);
+    }
+  });
+
+  server.on("/timer", HTTP_POST, [](AsyncWebServerRequest * request){
+    const int paramQty = request->params();
+    if(paramQty < 2){
+      Serial.println("Not enought parameters.");
+      request->send(STATUS_BAD_REQUEST);
+      return;
+    }
+    AsyncWebParameter* p_0 = request->getParam(0);
+    AsyncWebParameter* p_1 = request->getParam(1);
+    int mm = (p_0->value()).toInt();
+    int ss = (p_1->value()).toInt();
+    Serial.println("Request to set timer value");
+    Serial.println("Received: " + p_0->value() + "mm " + p_1->value() +"ss");
+    if(setTimerValue(mm, ss)){
+      request->send(STATUS_ACCEPTED);
+    }
+    else{
+      Serial.println("Abort: timer is running.");
       request->send(STATUS_BAD_REQUEST);
     }
   });
@@ -460,6 +475,15 @@ void resetTimer()
   timerStop(Timer0_cfg);
   timerWrite(Timer0_cfg, 0);
   timer_state = STOPPED;
+}
+
+bool setTimerValue(int mm, int ss){
+  if(timer_state == RUNNING){
+    return false;
+  }
+  scoreboard.timer.value.mm = mm;
+  scoreboard.timer.value.ss = ss;
+  return true;
 }
 
 void updateScores(int action, int team)
