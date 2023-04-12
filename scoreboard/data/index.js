@@ -33,7 +33,6 @@ const btnDownMinute = document.getElementById('down-minute');
 const btnUpSecond = document.getElementById('up-second');
 const btnDownSecond = document.getElementById('down-second');
 const IP = "192.168.4.1";
-const RUNNING = 1; // estado para timer activo
 let refreshTimer = null;
 let timerState = timerStatus.STOPPED;
 
@@ -62,8 +61,9 @@ const dataIndex = {
 }
 
 /* -------------------------------------------------------------------------------------------------------------- */
-/* -------------------------------------------------- SCORES ---------------------------------------------------- */
+/* -------------------------------------------------- EVENTS ---------------------------------------------------- */
 /* -------------------------------------------------------------------------------------------------------------- */
+
 // Visitor
 btnUpVisitor.addEventListener('click', async () => {
     const rawResponse = await fetch(`http://${IP}/score?cmd=${command.INC_SCORE_VISITOR}`, {
@@ -145,11 +145,13 @@ btnDownChuker.addEventListener('click', async () => {
     }
 });
 
-/* -------------------------------------------------------------------------------------------------------------- */
-/* --------------------------------------------------- TIMER ---------------------------------------------------- */
-/* -------------------------------------------------------------------------------------------------------------- */
+// Timer
 btnStartTimer.addEventListener('click', async () => {
-    if (timerState === timerStatus.STOPPED) {
+    if (parseInt(timerMMValue.value) === 0 && parseInt(timerSSValue.value) === 0) {
+        alert('Timer cannot be 00:00.');
+        return;
+    }
+    else {
         const rawResponse = await fetch(`http://${IP}/timer?cmd=${command.START_TIMER}`, {
             headers: {
                 'Content-Type': 'text/css'
@@ -157,9 +159,8 @@ btnStartTimer.addEventListener('click', async () => {
             method: 'GET'
         });
 
-        if (rawResponse.status === STATUS.ACCEPTED) {
-            createAutoRequest();
-        }
+        if (rawResponse.status === STATUS.ACCEPTED) { createAutoRequest(); }
+        else { alert('Something went wrong.'); }
     }
 });
 
@@ -171,12 +172,7 @@ btnStopTimer.addEventListener('click', async () => {
             },
             method: 'GET'
         });
-        if (rawResponse.status === STATUS.ACCEPTED) {
-            clearInterval(refreshTimer);
-            refreshTimer = null;
-            timerState = timerStatus.STOPPED;
-            setOptions();
-        }
+        if (rawResponse.status !== STATUS.ACCEPTED) { alert('Something went wrong.'); }
     }
 });
 
@@ -188,20 +184,17 @@ btnResetTimer.addEventListener('click', async () => {
         method: 'GET'
     });
     if (rawResponse.status === STATUS.ACCEPTED) {
-        const response = await rawResponse.text();
         setScoreboardValues(response);
-        clearInterval(refreshTimer);
-        refreshTimer = null;
-        timerState = timerStatus.STOPPED;
         setOptions();
     }
+    else { alert('Something went wrong.'); }
 });
 
 btnUpMinute.addEventListener('click', async () => {
     if (timerMMValue.value < 59) {
         timerMMValue.value = (parseInt(timerMMValue.value) + 1).toString().padStart(2, '0');
     }
-    else{
+    else {
         timerMMValue.value = "00";
     }
     sendTimerData(command.SET_CURRENT_TIMER);
@@ -211,7 +204,7 @@ btnDownMinute.addEventListener('click', async () => {
     if (timerMMValue.value > 0) {
         timerMMValue.value = (parseInt(timerMMValue.value) - 1).toString().padStart(2, '0');
     }
-    else{
+    else {
         timerMMValue.value = "59";
     }
     sendTimerData(command.SET_CURRENT_TIMER);
@@ -221,7 +214,7 @@ btnUpSecond.addEventListener('click', async () => {
     if (timerSSValue.value < 59) {
         timerSSValue.value = (parseInt(timerSSValue.value) + 1).toString().padStart(2, '0');
     }
-    else{
+    else {
         timerSSValue.value = "00";
     }
     sendTimerData(command.SET_CURRENT_TIMER);
@@ -231,19 +224,17 @@ btnDownSecond.addEventListener('click', async () => {
     if (timerSSValue.value > 0) {
         timerSSValue.value = (parseInt(timerSSValue.value) - 1).toString().padStart(2, '0');
     }
-    else{
+    else {
         timerSSValue.value = "59";
     }
     sendTimerData(command.SET_CURRENT_TIMER);
 });
 
 btnSetDefaultTimer.addEventListener('click', async () => {
-    sendTimerData(command.SET_DEFAULT_TIMER);
+    if (parseInt(timerMMValue.value) === 0 && parseInt(timerSSValue.value) === 0) { alert('Timer cannot be 00:00.'); }
+    else { sendTimerData(command.SET_DEFAULT_TIMER); }
 });
 
-/* -------------------------------------------------------------------------------------------------------------- */
-/* --------------------------------------------------- MAIN ----------------------------------------------------- */
-/* -------------------------------------------------------------------------------------------------------------- */
 // Reset all
 btnResetAll.addEventListener('click', async () => {
     const rawResponse = await fetch(`http://${IP}/reset`, {
@@ -256,13 +247,24 @@ btnResetAll.addEventListener('click', async () => {
         const response = await rawResponse.text();
         setScoreboardValues(response);
         setOptions();
-        clearInterval(refreshTimer);
-        refreshTimer = null;
     }
+    else { alert('Something went wrong.'); }
 });
+
+/* -------------------------------------------------------------------------------------------------------------- */
+/* --------------------------------------------------- MAIN ----------------------------------------------------- */
+/* -------------------------------------------------------------------------------------------------------------- */
 
 // Al cargarse el sitio web, buscar datos del tablero.
 window.addEventListener('load', async () => {
+    await refreshScoreboard();
+    if (timerState === timerStatus.RUNNING) {
+        if (refreshTimer === null) { createAutoRequest(); }
+    }
+});
+
+// Solicitar datos y refrescar el tablero
+async function refreshScoreboard() {
     const rawResponse = await fetch(`http://${IP}/scoreboard`, {
         headers: {
             'Content-Type': 'text/plain'
@@ -273,15 +275,24 @@ window.addEventListener('load', async () => {
         const response = await rawResponse.text();
         setScoreboardValues(response);
         setOptions();
-        if((timerState === RUNNING) && (refreshTimer === null)){
-            createAutoRequest();
-        }
+        if (timerState === timerStatus.STOPPED || timerState === timerStatus.FINISHED) { stopAutoRequest(); }
     }
-});
+}
 
-/* -------------------------------------------------------------------------------------------------------------- */
-/* ------------------------------------------------- UTILITIES -------------------------------------------------- */
-/* -------------------------------------------------------------------------------------------------------------- */
+// Se configura un periodo de XX ms en los cuales se consulta el estado del tablero
+function createAutoRequest() {
+    refreshTimer = setInterval(async () => {
+        await refreshScoreboard();
+    }, REQUEST_PERIOD);
+}
+
+// Detener el autorequest de datos de tablero
+function stopAutoRequest() {
+    clearInterval(refreshTimer);
+    refreshTimer = null;
+}
+
+// Plasmar datos en tablero
 function setScoreboardValues(dataString) {
     const data = dataString.split(',');
     visitorValue.value = data[dataIndex.VISITOR].padStart(2, '0');
@@ -292,6 +303,7 @@ function setScoreboardValues(dataString) {
     timerState = parseInt(data[dataIndex.TIMER_STATE]);
 }
 
+// Enviar valores de timer a servidor
 async function sendTimerData(cmd) {
     const rawResponse = await fetch(`http://${IP}/timer?mm=${timerMMValue.value}&ss=${timerSSValue.value}&cmd=${cmd}`, {
         headers: {
@@ -303,12 +315,12 @@ async function sendTimerData(cmd) {
         const response = await rawResponse.text();
         setScoreboardValues(response);
         setOptions();
+        if (cmd === command.SET_DEFAULT_TIMER) { alert('Timer updated.'); }
     }
-    else { alert('Something went wrong!') }
 }
 
+// Fijar opciones en front-end segun estado de timer
 function setOptions() {
-    console.log("timerState", timerState);
     if (timerState === timerStatus.STOPPED) {
         btnStopTimer.disabled = true;
         btnStartTimer.disabled = false;
@@ -336,20 +348,4 @@ function setOptions() {
         btnDownSecond.disabled = true;
         btnSetDefaultTimer.disabled = true;
     }
-}
-
-function createAutoRequest(){
-    // Se configura un periodo de XX ms en los cuales se consulta el estado del tablero
-    refreshTimer = setInterval(async () => {
-        const innerRawResponse = await fetch(`http://${IP}/scoreboard`, {
-            headers: {
-                'Content-Type': 'text/css'
-            },
-            method: 'GET'
-        });
-        const response = await innerRawResponse.text();
-        setScoreboardValues(response);
-        setOptions();
-    }, REQUEST_PERIOD);
-    timerState = timerStatus.RUNNING;
 }

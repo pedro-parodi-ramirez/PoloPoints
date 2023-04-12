@@ -82,6 +82,7 @@ typedef enum
   STATUS_OK = 200,
   STATUS_ACCEPTED = 202,
   STATUS_BAD_REQUEST = 400,
+  STATUS_UNPROCESSABLE_ENTITY = 422,
   STATUS_NOT_FOUND = 404
 };
 
@@ -232,10 +233,7 @@ void setup()
       request->send(STATUS_ACCEPTED, "text/plain", data);
       cmdReceived = true;
     }
-    else{
-      Serial.println("Abort: timer is running.");
-      request->send(STATUS_BAD_REQUEST);
-    }
+    else{ request->send(STATUS_UNPROCESSABLE_ENTITY); }
   });
 
   server.on("/score", HTTP_GET, [](AsyncWebServerRequest *request){
@@ -361,15 +359,13 @@ void loop()
     {
     case IDLE:
       // Pasado un segundo, con el timer activo, se actualiza el tablero
-      if (timerValueUpdate)
-      {
+      if (timerValueUpdate){
         timerValueUpdate = false;
         timer_state = updateTimer();
         main_state = REFRESH_SCOREBOARD;
       }
       // A la espera de comando por HTTP Request
-      if (cmdReceived)
-      {
+      if (cmdReceived){
         cmdReceived = false;
         main_state = REFRESH_SCOREBOARD;
       }
@@ -454,7 +450,7 @@ timer_state_t updateTimer()
 
 void startTimer()
 {
-  if (timer_state == STOPPED)
+  if (timer_state == STOPPED && !(scoreboard.timer.value.mm == 0 && scoreboard.timer.value.ss == 0))
   {
     timerStart(Timer0_cfg);
     timer_state = RUNNING;
@@ -482,9 +478,7 @@ void resetTimer()
 }
 
 bool setTimerValue(int mm, int ss, int action){
-  if(timer_state == RUNNING){
-    return false;
-  }
+  if(timer_state == RUNNING || (mm == 0 && ss == 0)){ return false; }
   if(action == SET_DEFAULT_TIMER){
     scoreboard.timer.initValue.mm = mm;
     scoreboard.timer.initValue.ss = ss;
