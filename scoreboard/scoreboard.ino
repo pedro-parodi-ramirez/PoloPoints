@@ -10,7 +10,6 @@
 #define LOCAL 1
 #define SECOND_IN_MICROS 1000000
 #define DOT_VALUE 0x80
-#define RX_MAX_LONG 50
 #define TX_MAX_LONG 50
 #define MAX_CONNECTIONS 1
 
@@ -19,7 +18,6 @@
 const byte DATA_FRAME_ROWS = 20;   // Filas de la matriz dataFrame a enviar a placa controladora. Filas -> header, comando, dato, ...
 const byte DATA_FRAME_COLUMNS = 2; // Columnas de la matriz dataFrame a enviar a placa controladora (2 columnas -> pares [key, value])
 const int VALUE = 1;               // Columna en la que se encuentra el valor del par [key, value]
-byte bufferRx[RX_MAX_LONG];
 bool timerValueUpdate = false;
 bool cmdReceived = false;
 const char *ssid = "ESP32-AccessPoint";
@@ -74,6 +72,8 @@ enum command_t
   START_TIMER,
   STOP_TIMER,
   RESET_TIMER,
+  SET_CURRENT_TIMER,
+  SET_DEFAULT_TIMER,
   RESET_ALL
 };
 
@@ -117,13 +117,13 @@ unsigned int setBufferTx(byte *bufferTx, byte *dataFrame[DATA_FRAME_ROWS][DATA_F
 timer_state_t updateTimer(scoreboard_t *scoreboard);
 void startTimer();
 void stopTimer();
-bool setTimerValue(int mm, int ss);
+bool setTimerValue(int mm, int ss, int action);
 void resetTimer();
 void updateScores(int action, int team);
 void updateChuker(int action);
 void resetScoreboard();
 void refreshScoreboard(scoreboard_t *scoreboard, byte dataFrame[DATA_FRAME_ROWS][DATA_FRAME_COLUMNS], byte *bufferTx);
-String scoreboardToString();
+String getScoreboard_toString();
 
 /***************************************************************************/
 /****************************** IRQ_HANDLERS *******************************/
@@ -203,7 +203,7 @@ void setup()
       Serial.println("Request to reset the timer.");
       cmdReceived = true;
       resetTimer();
-      data = scoreboardToString();
+      data = getScoreboard_toString();
       request->send(STATUS_ACCEPTED, "text/plain", data);
     }
     else{
@@ -214,19 +214,23 @@ void setup()
 
   server.on("/timer", HTTP_POST, [](AsyncWebServerRequest * request){
     const int paramQty = request->params();
-    if(paramQty < 2){
+    String data;
+    if(paramQty < 3){
       Serial.println("Not enought parameters.");
       request->send(STATUS_BAD_REQUEST);
       return;
     }
     AsyncWebParameter* p_0 = request->getParam(0);
     AsyncWebParameter* p_1 = request->getParam(1);
+    AsyncWebParameter* p_2 = request->getParam(2);
     int mm = (p_0->value()).toInt();
     int ss = (p_1->value()).toInt();
+    int cmd = (p_2->value()).toInt();
     Serial.println("Request to set timer value");
-    Serial.println("Received: " + p_0->value() + "mm " + p_1->value() +"ss");
-    if(setTimerValue(mm, ss)){
-      request->send(STATUS_ACCEPTED);
+    if(setTimerValue(mm, ss, cmd)){
+      data = getScoreboard_toString();
+      request->send(STATUS_ACCEPTED, "text/plain", data);
+      cmdReceived = true;
     }
     else{
       Serial.println("Abort: timer is running.");
@@ -266,7 +270,7 @@ void setup()
       return;
     }
     cmdReceived = true;
-    data = scoreboardToString();
+    data = getScoreboard_toString();
     request->send(STATUS_ACCEPTED, "text/plain", data);
   });
 
@@ -294,7 +298,7 @@ void setup()
       return;
     }
     cmdReceived = true;
-    data = scoreboardToString();
+    data = getScoreboard_toString();
     request->send(STATUS_ACCEPTED, "text/plain", data);
   });
 
@@ -303,13 +307,13 @@ void setup()
     Serial.println("Request to reset all scoreboard values.");
     resetScoreboard();
     cmdReceived = true;
-    data = scoreboardToString();
+    data = getScoreboard_toString();
     request->send(STATUS_ACCEPTED, "text/plain", data);
   });
 
   server.on("/scoreboard", HTTP_GET, [](AsyncWebServerRequest *request){
     Serial.println("Sending board data ...");
-    String data = scoreboardToString();
+    String data = getScoreboard_toString();
     request->send(STATUS_OK, "text/plain", data);
   });
 
@@ -477,9 +481,13 @@ void resetTimer()
   timer_state = STOPPED;
 }
 
-bool setTimerValue(int mm, int ss){
+bool setTimerValue(int mm, int ss, int action){
   if(timer_state == RUNNING){
     return false;
+  }
+  if(action == SET_DEFAULT_TIMER){
+    scoreboard.timer.initValue.mm = mm;
+    scoreboard.timer.initValue.ss = ss;
   }
   scoreboard.timer.value.mm = mm;
   scoreboard.timer.value.ss = ss;
@@ -528,7 +536,7 @@ void refreshScoreboard(scoreboard_t *scoreboard, byte dataFrame[DATA_FRAME_ROWS]
   Serial.write(bufferTx, DATA_FRAME_BYTES);            // enviar data
 }
 
-String scoreboardToString(){
+String getScoreboard_toString(){
   String s = String(scoreboard.score[0]);
   s += "," + String(scoreboard.score[1]);
   s += "," + String(scoreboard.chuker);
