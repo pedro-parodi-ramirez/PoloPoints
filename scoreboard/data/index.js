@@ -159,7 +159,9 @@ btnStartTimer.addEventListener('click', async () => {
             method: 'GET'
         });
 
-        if (rawResponse.status === STATUS.ACCEPTED) { createAutoRequest(); }
+        if (rawResponse.status === STATUS.ACCEPTED) {
+            if (refreshTimer === null) { startAutoRequest(); }
+        }
         else { alert('Something went wrong.'); }
     }
 });
@@ -174,20 +176,6 @@ btnStopTimer.addEventListener('click', async () => {
         });
         if (rawResponse.status !== STATUS.ACCEPTED) { alert('Something went wrong.'); }
     }
-});
-
-btnResetTimer.addEventListener('click', async () => {
-    const rawResponse = await fetch(`http://${IP}/timer?cmd=${command.RESET_TIMER}`, {
-        headers: {
-            'Content-Type': 'text/css'
-        },
-        method: 'GET'
-    });
-    if (rawResponse.status === STATUS.ACCEPTED) {
-        setScoreboardValues(response);
-        setOptions();
-    }
-    else { alert('Something went wrong.'); }
 });
 
 btnUpMinute.addEventListener('click', async () => {
@@ -235,6 +223,22 @@ btnSetDefaultTimer.addEventListener('click', async () => {
     else { sendTimerData(command.SET_DEFAULT_TIMER); }
 });
 
+btnResetTimer.addEventListener('click', async () => {
+    const rawResponse = await fetch(`http://${IP}/timer?cmd=${command.RESET_TIMER}`, {
+        headers: {
+            'Content-Type': 'text/css'
+        },
+        method: 'GET'
+    });
+    if (rawResponse.status === STATUS.ACCEPTED) {
+        const response = await rawResponse.text();
+        setScoreboardValues(response);
+        setOptions();
+        stopAutoRequest();
+    }
+    else { alert('Something went wrong.'); }
+});
+
 // Reset all
 btnResetAll.addEventListener('click', async () => {
     const rawResponse = await fetch(`http://${IP}/reset`, {
@@ -247,6 +251,7 @@ btnResetAll.addEventListener('click', async () => {
         const response = await rawResponse.text();
         setScoreboardValues(response);
         setOptions();
+        stopAutoRequest();
     }
     else { alert('Something went wrong.'); }
 });
@@ -259,7 +264,7 @@ btnResetAll.addEventListener('click', async () => {
 window.addEventListener('load', async () => {
     await refreshScoreboard();
     if (timerState === timerStatus.RUNNING) {
-        if (refreshTimer === null) { createAutoRequest(); }
+        if (refreshTimer === null) { startAutoRequest(); }
     }
 });
 
@@ -280,7 +285,7 @@ async function refreshScoreboard() {
 }
 
 // Se configura un periodo de XX ms en los cuales se consulta el estado del tablero
-function createAutoRequest() {
+function startAutoRequest() {
     refreshTimer = setInterval(async () => {
         await refreshScoreboard();
     }, REQUEST_PERIOD);
@@ -328,6 +333,7 @@ function setOptions() {
         btnDownMinute.disabled = false;
         btnUpSecond.disabled = false;
         btnDownSecond.disabled = false;
+        btnResetTimer.disabled = false;
         btnSetDefaultTimer.disabled = false;
     }
     else if (timerState === timerStatus.RUNNING) {
@@ -337,6 +343,7 @@ function setOptions() {
         btnDownMinute.disabled = true;
         btnUpSecond.disabled = true;
         btnDownSecond.disabled = true;
+        btnResetTimer.disabled = true;
         btnSetDefaultTimer.disabled = true;
     }
     else {
@@ -346,6 +353,7 @@ function setOptions() {
         btnDownMinute.disabled = true;
         btnUpSecond.disabled = true;
         btnDownSecond.disabled = true;
+        btnResetTimer.disabled = false;
         btnSetDefaultTimer.disabled = true;
     }
 }
