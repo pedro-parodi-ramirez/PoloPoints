@@ -10,56 +10,56 @@
 </head>
 
 <body>
-    <h1>Scoreboard</h1>
+    <h1>PoloPoints</h1>
     <hr>
     <div class="row">
         <div class="col-4 align-items-start">
-            <h3>VISITOR</h3>
-            <button id="up-visitor">Up</button>
-            <button id="down-visitor">Down</button>
+            <h3>LOCAL</h3>
+            <button id="up-local" class="btn-up-down">+</button>
+            <button id="down-local" class="btn-up-down">-</button>
             <div class="value">
-                <output id="visitor">00</output>
+                <output id="local">00</output>
             </div>
         </div>
         <div class="col-4 align-items-middle">
             <h3>CHUKER</h3>
-            <button id="up-chuker">Up</button>
-            <button id="down-chuker">Down</button>
+            <button id="up-chuker" class="btn-up-down">+</button>
+            <button id="down-chuker" class="btn-up-down">-</button>
             <div class="value">
                 <output id="chuker">00</output>
             </div>
         </div>
         <div class="col-4 align-items-end">
-            <h3>LOCAL</h3>
-            <button id="up-local">Up</button>
-            <button id="down-local">Down</button>
+            <h3>VISITANTE</h3>
+            <button id="up-visitor" class="btn-up-down">+</button>
+            <button id="down-visitor" class="btn-up-down">-</button>
             <div class="value">
-                <output id="local">00</output>
+                <output id="visitor">00</output>
             </div>
         </div>
     </div>
     <div class="row">
         <h3>TIMER</h3>
         <div>
-            <button id="start-timer" class="green">Start</button>
-            <button id="stop-timer" class="yellow">Stop</button>
+            <button id="start-timer" class="green btn-play-stop">&#9658</button>
+            <button id="stop-timer" class="orange btn-play-stop">||</button>
         </div>
         <div class="value">
-            <button id="up-minute">Up</button>
-            <button id="down-minute">Down</button>
+            <button id="up-minute" class="btn-up-down">+</button>
+            <button id="down-minute" class="btn-up-down">-</button>
             <output id="timer-mm">00</output>
             <span>:</span>
             <output id="timer-ss">00</output>
-            <button id="up-second">Up</button>
-            <button id="down-second">Down</button>
+            <button id="up-second" class="btn-up-down">+</button>
+            <button id="down-second" class="btn-up-down">-</button>
         </div>
         <div>
-            <button id="set-default-timer" class="orange">Save as default</button>
-            <button id="reset-timer">Reset</button>
+            <button id="set-default-timer" class="yellow">Save (default)</button>
+            <button id="reset-timer" class="yellow">R</button>
         </div>
     </div>
     <hr>
-    <button id="reset-all" class="red">Reset all</button>
+    <button id="reset-all" class="red btn-reset-all">A</button>
     <script src="index.js"></script>
 </body>
 

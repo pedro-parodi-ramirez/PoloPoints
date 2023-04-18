@@ -62,9 +62,25 @@ button[disabled]{
   color: #666666;
 }
 
+.btn-up-down{
+  width: 40px;
+  font-size: 1rem;
+}
+
+.btn-play-stop{
+  width: 60px;
+  height: 40px;
+  font-size: 1rem;
+}
+
+.btn-reset-all{
+  width: 100px;
+  font-size: 1rem;
+}
+
 .value{
   margin: 0.5rem 0;
-  font-size: 1.5rem;
+  font-size: 2rem;
   font-weight: bold;
 }
 
@@ -85,5 +101,5 @@ button[disabled]{
 
 .yellow{
   border: 2px solid #BDB76B;
-  background-color: #F0E68C;
+  background-color: #FFD700;
 }

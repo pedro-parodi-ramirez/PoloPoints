@@ -1,0 +1,8 @@
+1) ESP32 con antena externa
+https://articulo.mercadolibre.com.ar/MLA-1156544376-esp32-devkitc-wroom-32-placa-de-desarrollo-similar-arduino-_JM#position=43&search_layout=grid&type=item&tracking_id=038757d1-dd60-44d8-a065-2c2211ab241e
+
+2) Amplificador de audio 60W
+https://articulo.mercadolibre.com.ar/MLA-896439120-modulo-amplificador-audio-diy-pbtl-tpa3118-60w-mono-_JM#position=4&search_layout=grid&type=item&tracking_id=42b21268-8523-478e-b552-655b5dabc5b0
+
+3) Convertidor step-down 12V-5V
+Regulable: https://www.todomicro.com.ar/investigacion-desarrollo-y-prototipado/352-modulo-step-down-xl4005.html

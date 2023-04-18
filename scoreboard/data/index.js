@@ -10,7 +10,7 @@ const timerStatus = {
     RUNNING: 1,
     FINISHED: 2
 }
-const REQUEST_PERIOD = 200;
+const REQUEST_PERIOD = 250;
 
 const btnUpVisitor = document.getElementById('up-visitor');
 const btnDownVisitor = document.getElementById('down-visitor');
@@ -37,10 +37,10 @@ let refreshTimer = null;
 let timerState = timerStatus.STOPPED;
 
 const command = {
-    INC_SCORE_VISITOR: 0,
-    INC_SCORE_LOCAL: 1,
-    DEC_SCORE_VISITOR: 2,
-    DEC_SCORE_LOCAL: 3,
+    INC_SCORE_LOCAL: 0,
+    INC_SCORE_VISITOR: 1,
+    DEC_SCORE_LOCAL: 2,
+    DEC_SCORE_VISITOR: 3,
     INC_CHUKER: 4,
     DEC_CHUKER: 5,
     START_TIMER: 6,
@@ -310,11 +310,11 @@ function setScoreboardValues(dataString) {
 
 // Enviar valores de timer a servidor
 async function sendTimerData(cmd) {
-    const rawResponse = await fetch(`http://${IP}/timer?mm=${timerMMValue.value}&ss=${timerSSValue.value}&cmd=${cmd}`, {
+    const rawResponse = await fetch(`http://${IP}/timer/set?mm=${timerMMValue.value}&ss=${timerSSValue.value}&cmd=${cmd}`, {
         headers: {
             'Content-Type': 'text/plain',
         },
-        method: 'POST',
+        method: 'GET',
     });
     if (rawResponse.status === STATUS.ACCEPTED) {
         const response = await rawResponse.text();

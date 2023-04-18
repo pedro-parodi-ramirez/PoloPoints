@@ -16,11 +16,9 @@
 /***************************************************************************/
 /******************************** GLOBAL ***********************************/
 const byte DATA_FRAME_ROWS = 20;   // Filas de la matriz dataFrame a enviar a placa controladora. Filas -> header, comando, dato, ...
-const byte DATA_FRAME_COLUMNS = 2; // Columnas de la matriz dataFrame a enviar a placa controladora (2 columnas -> pares [key, value])
-const int VALUE = 1;               // Columna en la que se encuentra el valor del par [key, value]
 bool timerValueUpdate = false;
 bool cmdReceived = false;
-const char *ssid = "ESP32-AccessPoint";
+const char *ssid = "PoloPoints";
 const char *password = "12345678";
 AsyncWebServer server(80);
 
@@ -30,14 +28,12 @@ hw_timer_t *Timer0_cfg = NULL;
 
 /***************************************************************************/
 /****************************** DATA TYPES *********************************/
-struct _timer_t
-{
+struct _timer_t{
   int mm = 6;
   int ss = 30;
 };
 
-struct scoreboard_t
-{
+struct scoreboard_t{
   int score[2] = {0, 0};
   int chuker = 0;
   struct __timer_t
@@ -47,26 +43,23 @@ struct scoreboard_t
   } timer;
 } scoreboard;
 
-enum main_state_t
-{
+enum main_state_t{
   IDLE,
   REFRESH_SCOREBOARD,
   INIT
 } main_state = INIT;
 
-enum timer_state_t
-{
+enum timer_state_t{
   STOPPED,
   RUNNING,
   FINISHED
 } timer_state = STOPPED;
 
-enum command_t
-{
-  INC_SCORE_VISITOR,
+enum command_t{
   INC_SCORE_LOCAL,
-  DEC_SCORE_VISITOR,
+  INC_SCORE_VISITOR,  
   DEC_SCORE_LOCAL,
+  DEC_SCORE_VISITOR,
   INC_CHUKER,
   DEC_CHUKER,
   START_TIMER,
@@ -77,8 +70,7 @@ enum command_t
   RESET_ALL
 };
 
-typedef enum
-{
+enum request_status_t{
   STATUS_OK = 200,
   STATUS_ACCEPTED = 202,
   STATUS_BAD_REQUEST = 400,
@@ -86,8 +78,7 @@ typedef enum
   STATUS_NOT_FOUND = 404
 };
 
-typedef enum
-{
+enum data_frame_index_t{
   HEADER,
   COMMAND,
   ADDRESS,
@@ -96,15 +87,15 @@ typedef enum
   FLASH,
   RESERVED_2,
   RESERVED_3,
-  SCORE_LOCAL_DECENA,
-  SCORE_LOCAL_UNIDAD,
-  TIMER_MM_DECENA,
-  TIMER_MM_UNIDAD,
-  CHUKER,
-  TIMER_SS_DECENA,
-  TIMER_SS_UNIDAD,
-  SCORE_VISITOR_DECENA,
   SCORE_VISITOR_UNIDAD,
+  SCORE_VISITOR_DECENA,
+  TIMER_SS_UNIDAD,
+  TIMER_SS_DECENA,
+  CHUKER,
+  TIMER_MM_UNIDAD,
+  TIMER_MM_DECENA,
+  SCORE_LOCAL_UNIDAD,
+  SCORE_LOCAL_DECENA,
   DATA_END,
   CHECKSUM,
   FRAME_END
@@ -112,9 +103,9 @@ typedef enum
 
 /***************************************************************************/
 /***************************** DECLARATIONS ********************************/
-byte genChecksum(byte dataFrame[DATA_FRAME_ROWS][DATA_FRAME_COLUMNS]);
-void setDataFrame(scoreboard_t *scoreboard, byte dataFrame[DATA_FRAME_ROWS][DATA_FRAME_COLUMNS]);
-unsigned int setBufferTx(byte *bufferTx, byte *dataFrame[DATA_FRAME_ROWS][DATA_FRAME_COLUMNS]);
+byte genChecksum(byte *dataFrame);
+void setDataFrame(scoreboard_t *scoreboard, byte *dataFrame);
+unsigned int setBufferTx(byte *bufferTx, byte *dataFrame);
 timer_state_t updateTimer(scoreboard_t *scoreboard);
 void startTimer();
 void stopTimer();
@@ -123,7 +114,8 @@ void resetTimer();
 void updateScores(int action, int team);
 void updateChuker(int action);
 void resetScoreboard();
-void refreshScoreboard(scoreboard_t *scoreboard, byte dataFrame[DATA_FRAME_ROWS][DATA_FRAME_COLUMNS], byte *bufferTx);
+void initDataFrame(byte *dataFrame);
+void refreshScoreboard(scoreboard_t *scoreboard, byte *dataFrame, byte *bufferTx);
 String getScoreboard_toString();
 
 /***************************************************************************/
@@ -164,6 +156,7 @@ void setup()
 
   /***************************************************************************/
   /***************************** HTTP REQUEST ********************************/
+  // Ruta a index.html
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
     request->send(SPIFFS, "/index.html", String(), false);
   });
@@ -178,6 +171,30 @@ void setup()
     request->send(SPIFFS, "/index.js", "text/css");
   });
 
+  // Timer
+  server.on("/timer/set", HTTP_GET, [](AsyncWebServerRequest * request){
+    const int paramQty = request->params();
+    String data;
+    Serial.println("Request to set timer value");
+    if(paramQty < 3){
+      Serial.println("Not enought parameters.");
+      request->send(STATUS_BAD_REQUEST);
+      return;
+    }
+    AsyncWebParameter* p_0 = request->getParam(0);
+    AsyncWebParameter* p_1 = request->getParam(1);
+    AsyncWebParameter* p_2 = request->getParam(2);
+    int mm = (p_0->value()).toInt();
+    int ss = (p_1->value()).toInt();
+    int cmd = (p_2->value()).toInt();
+    if(setTimerValue(mm, ss, cmd)){
+      data = getScoreboard_toString();
+      request->send(STATUS_ACCEPTED, "text/plain", data);
+      cmdReceived = true;
+    }
+    else{ request->send(STATUS_UNPROCESSABLE_ENTITY); }
+  });
+  
   server.on("/timer", HTTP_GET, [](AsyncWebServerRequest *request){
     const int paramQty = request->params();
     String data;
@@ -212,30 +229,8 @@ void setup()
       request->send(STATUS_BAD_REQUEST);
     }
   });
-
-  server.on("/timer", HTTP_POST, [](AsyncWebServerRequest * request){
-    const int paramQty = request->params();
-    String data;
-    if(paramQty < 3){
-      Serial.println("Not enought parameters.");
-      request->send(STATUS_BAD_REQUEST);
-      return;
-    }
-    AsyncWebParameter* p_0 = request->getParam(0);
-    AsyncWebParameter* p_1 = request->getParam(1);
-    AsyncWebParameter* p_2 = request->getParam(2);
-    int mm = (p_0->value()).toInt();
-    int ss = (p_1->value()).toInt();
-    int cmd = (p_2->value()).toInt();
-    Serial.println("Request to set timer value");
-    if(setTimerValue(mm, ss, cmd)){
-      data = getScoreboard_toString();
-      request->send(STATUS_ACCEPTED, "text/plain", data);
-      cmdReceived = true;
-    }
-    else{ request->send(STATUS_UNPROCESSABLE_ENTITY); }
-  });
-
+  
+  // Puntajes
   server.on("/score", HTTP_GET, [](AsyncWebServerRequest *request){
     const int paramQty = request->params();
     String data;
@@ -272,6 +267,7 @@ void setup()
     request->send(STATUS_ACCEPTED, "text/plain", data);
   });
 
+  // Chuker
   server.on("/chuker", HTTP_GET, [](AsyncWebServerRequest *request){
     const int paramQty = request->params();
     String data;
@@ -300,6 +296,7 @@ void setup()
     request->send(STATUS_ACCEPTED, "text/plain", data);
   });
 
+  // Reset tablero a valores default
   server.on("/reset", HTTP_GET, [](AsyncWebServerRequest *request){
     String data;
     Serial.println("Request to reset all scoreboard values.");
@@ -309,12 +306,14 @@ void setup()
     request->send(STATUS_ACCEPTED, "text/plain", data);
   });
 
+  // Obtener datos de tablero como string
   server.on("/scoreboard", HTTP_GET, [](AsyncWebServerRequest *request){
     Serial.println("Sending board data ...");
     String data = getScoreboard_toString();
     request->send(STATUS_OK, "text/plain", data);
   });
 
+  // Rutas no definidas
   server.onNotFound([](AsyncWebServerRequest *request){
     Serial.println("Request for undefined route.");
     request->send(STATUS_NOT_FOUND, "text/plain", "Page not found.");
@@ -328,29 +327,8 @@ void setup()
 void loop()
 {
   byte bufferTx[TX_MAX_LONG];
-  byte dataFrame[DATA_FRAME_ROWS][DATA_FRAME_COLUMNS] = {
-      {HEADER, 0x7F},
-      {COMMAND, 0xDD},  // enviar data
-      {ADDRESS, 0x00},  // broadcast
-      {RESPONSE, 0x01}, // no return code
-      {RESERVED_1, 0x00},
-      {FLASH, 0x01}, // no guardar en flash
-      {RESERVED_2, 0x00},
-      {RESERVED_3, 0x00},
-      {SCORE_LOCAL_DECENA, 0x30},
-      {SCORE_LOCAL_UNIDAD, 0x30},
-      {TIMER_MM_DECENA, 0x30},
-      {TIMER_MM_UNIDAD, 0x30},
-      {CHUKER, 0x30},
-      {TIMER_SS_DECENA, 0x30},
-      {TIMER_SS_UNIDAD, 0x30},
-      {SCORE_VISITOR_DECENA, 0x30},
-      {SCORE_VISITOR_UNIDAD, 0x30},
-      {DATA_END, 0xFF},
-      {CHECKSUM, 0x9D},
-      {FRAME_END, 0x7F},
-  };
-
+  byte dataFrame[DATA_FRAME_ROWS];
+  
   /*********************************************************************************/
   /****************************** STATE MACHINE LOOP *******************************/
   while (1)
@@ -375,6 +353,7 @@ void loop()
       main_state = IDLE;
       break;
     case INIT:
+      initDataFrame(dataFrame);
       refreshScoreboard(&scoreboard, dataFrame, bufferTx);
       main_state = IDLE;
       break;
@@ -388,44 +367,72 @@ void loop()
 
 /***************************************************************************/
 /******************************** FUNCTIONS ********************************/
-byte genChecksum(byte dataFrame[DATA_FRAME_ROWS][DATA_FRAME_COLUMNS])
+// Se inicializa el dataframe con valores default del tablero
+void initDataFrame(byte *dataFrame){
+  dataFrame[HEADER] = 0x7F;
+  dataFrame[COMMAND] = 0xDD;    // enviar data
+  dataFrame[ADDRESS] = 0x00;    // broadcast
+  dataFrame[RESPONSE] = 0x01;   // no return code
+  dataFrame[RESERVED_1] = 0x00;
+  dataFrame[FLASH] = 0x01;      // no guardar en flash
+  dataFrame[RESERVED_2] = 0x00;
+  dataFrame[RESERVED_3] = 0x00;
+  dataFrame[SCORE_VISITOR_UNIDAD] = 0x30;
+  dataFrame[SCORE_VISITOR_DECENA] = 0x30;
+  dataFrame[TIMER_SS_UNIDAD] = 0x30;
+  dataFrame[TIMER_SS_DECENA] = 0xB0;
+  dataFrame[CHUKER] = 0x30;
+  dataFrame[TIMER_MM_UNIDAD] = 0xB0;  
+  dataFrame[TIMER_MM_DECENA] = 0x30;
+  dataFrame[SCORE_LOCAL_UNIDAD] = 0x30;
+  dataFrame[SCORE_LOCAL_DECENA] = 0x30;
+  dataFrame[DATA_END] = 0xFF;
+  dataFrame[CHECKSUM] = 0x9D;
+  dataFrame[FRAME_END] = 0x7F;
+}
+
+// Genera el checksum para el data frame a enviar a la placa controladora de leds
+byte genChecksum(byte *dataFrame)
 {
-  int checksum = 0, i;
+  int checksum = 0;
+  byte i;
   // Para el checksum, se suman los bytes de dataFrame desde el byte COMMAND hasta el DATA_END inclusive
   for (i = COMMAND; i <= DATA_END; i++)
   {
-    checksum += dataFrame[i][VALUE]; // Los datos se encuentran en la 2da columna -> pares [key, value]
+    checksum += dataFrame[i];
   }
   return (byte)(checksum & 0xFF); // el checksum es byte menos significativo
 }
 
-void setDataFrame(scoreboard_t *scoreboard, byte dataFrame[DATA_FRAME_ROWS][DATA_FRAME_COLUMNS])
+// Se convierten valores numéricos a valores ASCII y se asignan al dataFrame a enviar al tablero
+void setDataFrame(scoreboard_t *scoreboard, byte *dataFrame)
 {
-  // Se convierten valores numéricos a valores ASCII y se asignan al dataFrame a enviar al tablero
-  dataFrame[TIMER_MM_DECENA][VALUE] = (byte)(scoreboard->timer.value.mm / 10 + '0');
-  dataFrame[TIMER_MM_UNIDAD][VALUE] = (byte)(scoreboard->timer.value.mm % 10 + '0') + DOT_VALUE;
-  dataFrame[TIMER_SS_DECENA][VALUE] = (byte)(scoreboard->timer.value.ss / 10 + '0') + DOT_VALUE;
-  dataFrame[TIMER_SS_UNIDAD][VALUE] = (byte)(scoreboard->timer.value.ss % 10 + '0');
-  dataFrame[SCORE_VISITOR_UNIDAD][VALUE] = (byte)(scoreboard->score[VISITOR] % 10 + '0');
-  dataFrame[SCORE_VISITOR_DECENA][VALUE] = (byte)(scoreboard->score[VISITOR] / 10 + '0');
-  dataFrame[SCORE_LOCAL_UNIDAD][VALUE] = (byte)(scoreboard->score[LOCAL] % 10 + '0');
-  dataFrame[SCORE_LOCAL_DECENA][VALUE] = (byte)(scoreboard->score[LOCAL] / 10 + '0');
-  dataFrame[CHUKER][VALUE] = (byte)(scoreboard->chuker % 10 + '0');
-  dataFrame[CHECKSUM][VALUE] = genChecksum(dataFrame);
+  dataFrame[TIMER_MM_DECENA] = (byte)(scoreboard->timer.value.mm / 10 + '0');
+  dataFrame[TIMER_MM_UNIDAD] = (byte)(scoreboard->timer.value.mm % 10 + '0') + DOT_VALUE;
+  dataFrame[TIMER_SS_DECENA] = (byte)(scoreboard->timer.value.ss / 10 + '0') + DOT_VALUE;
+  dataFrame[TIMER_SS_UNIDAD] = (byte)(scoreboard->timer.value.ss % 10 + '0');
+  dataFrame[SCORE_VISITOR_UNIDAD] = (byte)(scoreboard->score[VISITOR] % 10 + '0');
+  dataFrame[SCORE_VISITOR_DECENA] = (byte)(scoreboard->score[VISITOR] / 10 + '0');
+  dataFrame[SCORE_LOCAL_UNIDAD] = (byte)(scoreboard->score[LOCAL] % 10 + '0');
+  dataFrame[SCORE_LOCAL_DECENA] = (byte)(scoreboard->score[LOCAL] / 10 + '0');
+  dataFrame[CHUKER] = (byte)(scoreboard->chuker % 10 + '0');
+  dataFrame[CHECKSUM] = genChecksum(dataFrame);
 }
 
-unsigned int setBufferTx(byte *bufferTx, byte dataFrame[DATA_FRAME_ROWS][DATA_FRAME_COLUMNS])
+// Copia los datos de data frame a buffer a transmitir por serial
+unsigned int setBufferTx(byte *bufferTx, byte *dataFrame)
 {
-  char i = 0;
+  byte i = 0;
   unsigned int bytes_to_transfer = 0;
   for (i = 0; i < DATA_FRAME_ROWS; i++)
   {
-    bufferTx[i] = dataFrame[i][VALUE];
+    bufferTx[i] = dataFrame[i];
     bytes_to_transfer++;
   }
   return bytes_to_transfer;
 }
 
+// Actualiza timer, transcurrido un segundo
 timer_state_t updateTimer()
 {
   scoreboard.timer.value.ss--;
@@ -448,6 +455,7 @@ timer_state_t updateTimer()
   return RUNNING;
 }
 
+// Iniciar el timer
 void startTimer()
 {
   if (timer_state == STOPPED && !(scoreboard.timer.value.mm == 0 && scoreboard.timer.value.ss == 0))
@@ -457,6 +465,7 @@ void startTimer()
   }
 }
 
+// Frena el timer
 void stopTimer()
 {
   if (timer_state == RUNNING)
@@ -466,6 +475,7 @@ void stopTimer()
   }
 }
 
+// Resetear el timer a valor default y frenarlo
 void resetTimer()
 {
   scoreboard.timer.value.mm = scoreboard.timer.initValue.mm;
@@ -477,6 +487,7 @@ void resetTimer()
   timer_state = STOPPED;
 }
 
+// Setear valor en timer
 bool setTimerValue(int mm, int ss, int action){
   if(timer_state == RUNNING || (mm == 0 && ss == 0)){ return false; }
   if(action == SET_DEFAULT_TIMER){
@@ -488,6 +499,7 @@ bool setTimerValue(int mm, int ss, int action){
   return true;
 }
 
+// Actualizar puntajes, con accion y equipo que corresponda
 void updateScores(int action, int team)
 {
   if (action == INCREASE)
@@ -498,6 +510,7 @@ void updateScores(int action, int team)
   else if (scoreboard.score[team] > 0){ scoreboard.score[team]--; }
 }
 
+// Actualizar chuker, segun la accion solicitada
 void updateChuker(int action)
 {
   if (action == INCREASE)
@@ -508,6 +521,7 @@ void updateChuker(int action)
   else if (scoreboard.chuker > 0){ scoreboard.chuker--; }
 }
 
+// Llevar tablero a valor default
 void resetScoreboard()
 {
   scoreboard.score[VISITOR] = 0;
@@ -522,7 +536,8 @@ void resetScoreboard()
   timer_state = STOPPED;
 }
 
-void refreshScoreboard(scoreboard_t *scoreboard, byte dataFrame[DATA_FRAME_ROWS][DATA_FRAME_COLUMNS], byte *bufferTx)
+// Actualizar datos en tablero, enviando los datos por serial a placa controladora
+void refreshScoreboard(scoreboard_t *scoreboard, byte *dataFrame, byte *bufferTx)
 {
   unsigned int DATA_FRAME_BYTES = 0;
   setDataFrame(scoreboard, dataFrame);                 // setear la trama de datos a enviar
@@ -530,6 +545,7 @@ void refreshScoreboard(scoreboard_t *scoreboard, byte dataFrame[DATA_FRAME_ROWS]
   Serial.write(bufferTx, DATA_FRAME_BYTES);            // enviar data
 }
 
+// Transformar los datos del tablero en una cadena concatenada, para enviar a front-end
 String getScoreboard_toString(){
   String s = String(scoreboard.score[0]);
   s += "," + String(scoreboard.score[1]);
