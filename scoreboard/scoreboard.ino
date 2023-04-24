@@ -6,8 +6,8 @@
 /******************************** DEFINES **********************************/
 #define DECREASE 0
 #define INCREASE 1
-#define VISITOR 0
-#define LOCAL 1
+#define LOCAL 0
+#define VISITOR 1
 #define SECOND_IN_MICROS 1000000
 #define DOT_VALUE 0x80
 #define TX_MAX_LONG 50
@@ -35,7 +35,7 @@ struct _timer_t{
 
 struct scoreboard_t{
   int score[2] = {0, 0};
-  int chuker = 0;
+  int chuker = 1;
   struct __timer_t
   {
     _timer_t value;
@@ -87,15 +87,15 @@ enum data_frame_index_t{
   FLASH,
   RESERVED_2,
   RESERVED_3,
+  TIMER_MM_DECENA,
+  TIMER_MM_UNIDAD,
+  TIMER_SS_DECENA,
+  TIMER_SS_UNIDAD,
   SCORE_VISITOR_UNIDAD,
   SCORE_VISITOR_DECENA,
-  TIMER_SS_UNIDAD,
-  TIMER_SS_DECENA,
-  CHUKER,
-  TIMER_MM_UNIDAD,
-  TIMER_MM_DECENA,
   SCORE_LOCAL_UNIDAD,
   SCORE_LOCAL_DECENA,
+  CHUKER,
   DATA_END,
   CHECKSUM,
   FRAME_END
@@ -114,7 +114,7 @@ void resetTimer();
 void updateScores(int action, int team);
 void updateChuker(int action);
 void resetScoreboard();
-void initDataFrame(byte *dataFrame);
+void setDataFrameHeaders(byte *dataFrame);
 void refreshScoreboard(scoreboard_t *scoreboard, byte *dataFrame, byte *bufferTx);
 String getScoreboard_toString();
 
@@ -168,7 +168,7 @@ void setup()
 
   // Ruta a index.js
   server.on("/index.js", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(SPIFFS, "/index.js", "text/css");
+    request->send(SPIFFS, "/index.js", "text/html");
   });
 
   // Timer
@@ -241,6 +241,8 @@ void setup()
     }
     AsyncWebParameter* p_0 = request->getParam(0);
     int cmd = (p_0->value()).toInt();
+    Serial.print("cmd: ");
+    Serial.println(cmd);
     if(cmd == INC_SCORE_VISITOR){
         Serial.println("Request to increase visitor score.");
         updateScores(INCREASE, VISITOR);
@@ -353,7 +355,7 @@ void loop()
       main_state = IDLE;
       break;
     case INIT:
-      initDataFrame(dataFrame);
+      setDataFrameHeaders(dataFrame);
       refreshScoreboard(&scoreboard, dataFrame, bufferTx);
       main_state = IDLE;
       break;
@@ -367,8 +369,8 @@ void loop()
 
 /***************************************************************************/
 /******************************** FUNCTIONS ********************************/
-// Se inicializa el dataframe con valores default del tablero
-void initDataFrame(byte *dataFrame){
+// Se inicializa el dataframe con los headers para comunicarse con la placa controladora
+void setDataFrameHeaders(byte *dataFrame){
   dataFrame[HEADER] = 0x7F;
   dataFrame[COMMAND] = 0xDD;    // enviar data
   dataFrame[ADDRESS] = 0x00;    // broadcast
@@ -377,17 +379,7 @@ void initDataFrame(byte *dataFrame){
   dataFrame[FLASH] = 0x01;      // no guardar en flash
   dataFrame[RESERVED_2] = 0x00;
   dataFrame[RESERVED_3] = 0x00;
-  dataFrame[SCORE_VISITOR_UNIDAD] = 0x30;
-  dataFrame[SCORE_VISITOR_DECENA] = 0x30;
-  dataFrame[TIMER_SS_UNIDAD] = 0x30;
-  dataFrame[TIMER_SS_DECENA] = 0xB0;
-  dataFrame[CHUKER] = 0x30;
-  dataFrame[TIMER_MM_UNIDAD] = 0xB0;  
-  dataFrame[TIMER_MM_DECENA] = 0x30;
-  dataFrame[SCORE_LOCAL_UNIDAD] = 0x30;
-  dataFrame[SCORE_LOCAL_DECENA] = 0x30;
   dataFrame[DATA_END] = 0xFF;
-  dataFrame[CHECKSUM] = 0x9D;
   dataFrame[FRAME_END] = 0x7F;
 }
 
@@ -493,9 +485,14 @@ bool setTimerValue(int mm, int ss, int action){
   if(action == SET_DEFAULT_TIMER){
     scoreboard.timer.initValue.mm = mm;
     scoreboard.timer.initValue.ss = ss;
+    scoreboard.timer.value.mm = mm;
+    scoreboard.timer.value.ss = ss;
   }
-  scoreboard.timer.value.mm = mm;
-  scoreboard.timer.value.ss = ss;
+  else if (action == SET_CURRENT_TIMER){
+    scoreboard.timer.value.mm = mm;
+    scoreboard.timer.value.ss = ss;
+  }
+  else{ return false; }
   return true;
 }
 
@@ -526,7 +523,7 @@ void resetScoreboard()
 {
   scoreboard.score[VISITOR] = 0;
   scoreboard.score[LOCAL] = 0;
-  scoreboard.chuker = 0;
+  scoreboard.chuker = 1;
   scoreboard.timer.value.mm = scoreboard.timer.initValue.mm;
   scoreboard.timer.value.ss = scoreboard.timer.initValue.ss;
 

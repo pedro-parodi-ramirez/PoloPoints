@@ -22,11 +22,6 @@ const btnStartTimer = document.getElementById('start-timer');
 const btnStopTimer = document.getElementById('stop-timer');
 const btnResetTimer = document.getElementById('reset-timer');
 const btnResetAll = document.getElementById('reset-all');
-const visitorValue = document.getElementById('visitor');
-const localValue = document.getElementById('local');
-const chukerValue = document.getElementById('chuker');
-const timerMMValue = document.getElementById('timer-mm');
-const timerSSValue = document.getElementById('timer-ss');
 const btnSetDefaultTimer = document.getElementById('set-default-timer');
 const btnUpMinute = document.getElementById('up-minute');
 const btnDownMinute = document.getElementById('down-minute');
@@ -34,6 +29,11 @@ const btnUpSecond = document.getElementById('up-second');
 const btnDownSecond = document.getElementById('down-second');
 const IP = "192.168.4.1";
 let refreshTimer = null;
+const localValue = document.getElementById('local');
+const visitorValue = document.getElementById('visitor');
+const chukerValue = document.getElementById('chuker');
+const timerMMValue = document.getElementById('timer-mm');
+const timerSSValue = document.getElementById('timer-ss');
 let timerState = timerStatus.STOPPED;
 
 const command = {
@@ -52,8 +52,8 @@ const command = {
 };
 
 const dataIndex = {
-    VISITOR: 0,
-    LOCAL: 1,
+    LOCAL: 0,
+    VISITOR: 1,
     CHUKER: 2,
     TIMER_MM: 3,
     TIMER_SS: 4,
@@ -66,12 +66,7 @@ const dataIndex = {
 
 // Visitor
 btnUpVisitor.addEventListener('click', async () => {
-    const rawResponse = await fetch(`http://${IP}/score?cmd=${command.INC_SCORE_VISITOR}`, {
-        headers: {
-            'Content-Type': 'text/css'
-        },
-        method: 'GET'
-    });
+    const rawResponse = await fetch(`http://${IP}/score?cmd=${command.INC_SCORE_VISITOR}`);
     if (rawResponse.status === STATUS.ACCEPTED) {
         const response = await rawResponse.text();
         setScoreboardValues(response);
@@ -79,12 +74,7 @@ btnUpVisitor.addEventListener('click', async () => {
 });
 
 btnDownVisitor.addEventListener('click', async () => {
-    const rawResponse = await fetch(`http://${IP}/score?cmd=${command.DEC_SCORE_VISITOR}`, {
-        headers: {
-            'Content-Type': 'text/css'
-        },
-        method: 'GET'
-    });
+    const rawResponse = await fetch(`http://${IP}/score?cmd=${command.DEC_SCORE_VISITOR}`);
     if (rawResponse.status === STATUS.ACCEPTED) {
         const response = await rawResponse.text();
         setScoreboardValues(response);
@@ -93,12 +83,7 @@ btnDownVisitor.addEventListener('click', async () => {
 
 // Local
 btnUpLocal.addEventListener('click', async () => {
-    const rawResponse = await fetch(`http://${IP}/score?cmd=${command.INC_SCORE_LOCAL}`, {
-        headers: {
-            'Content-Type': 'text/css'
-        },
-        method: 'GET'
-    });
+    const rawResponse = await fetch(`http://${IP}/score?cmd=${command.INC_SCORE_LOCAL}`);
     if (rawResponse.status === STATUS.ACCEPTED) {
         const response = await rawResponse.text();
         setScoreboardValues(response);
@@ -106,12 +91,7 @@ btnUpLocal.addEventListener('click', async () => {
 });
 
 btnDownLocal.addEventListener('click', async () => {
-    const rawResponse = await fetch(`http://${IP}/score?cmd=${command.DEC_SCORE_LOCAL}`, {
-        headers: {
-            'Content-Type': 'text/css'
-        },
-        method: 'GET'
-    });
+    const rawResponse = await fetch(`http://${IP}/score?cmd=${command.DEC_SCORE_LOCAL}`);
     if (rawResponse.status === STATUS.ACCEPTED) {
         const response = await rawResponse.text();
         setScoreboardValues(response);
@@ -120,12 +100,7 @@ btnDownLocal.addEventListener('click', async () => {
 
 // Chuker
 btnUpChuker.addEventListener('click', async () => {
-    const rawResponse = await fetch(`http://${IP}/chuker?cmd=${command.INC_CHUKER}`, {
-        headers: {
-            'Content-Type': 'text/css'
-        },
-        method: 'GET'
-    });
+    const rawResponse = await fetch(`http://${IP}/chuker?cmd=${command.INC_CHUKER}`);
     if (rawResponse.status === STATUS.ACCEPTED) {
         const response = await rawResponse.text();
         setScoreboardValues(response);
@@ -133,12 +108,7 @@ btnUpChuker.addEventListener('click', async () => {
 });
 
 btnDownChuker.addEventListener('click', async () => {
-    const rawResponse = await fetch(`http://${IP}/chuker?cmd=${command.DEC_CHUKER}`, {
-        headers: {
-            'Content-Type': 'text/css'
-        },
-        method: 'GET'
-    });
+    const rawResponse = await fetch(`http://${IP}/chuker?cmd=${command.DEC_CHUKER}`);
     if (rawResponse.status === STATUS.ACCEPTED) {
         const response = await rawResponse.text();
         setScoreboardValues(response);
@@ -152,12 +122,7 @@ btnStartTimer.addEventListener('click', async () => {
         return;
     }
     else {
-        const rawResponse = await fetch(`http://${IP}/timer?cmd=${command.START_TIMER}`, {
-            headers: {
-                'Content-Type': 'text/css'
-            },
-            method: 'GET'
-        });
+        const rawResponse = await fetch(`http://${IP}/timer?cmd=${command.START_TIMER}`);
 
         if (rawResponse.status === STATUS.ACCEPTED) {
             if (refreshTimer === null) { startAutoRequest(); }
@@ -168,68 +133,44 @@ btnStartTimer.addEventListener('click', async () => {
 
 btnStopTimer.addEventListener('click', async () => {
     if (timerState === timerStatus.RUNNING) {
-        const rawResponse = await fetch(`http://${IP}/timer?cmd=${command.STOP_TIMER}`, {
-            headers: {
-                'Content-Type': 'text/css'
-            },
-            method: 'GET'
-        });
+        const rawResponse = await fetch(`http://${IP}/timer?cmd=${command.STOP_TIMER}`);
         if (rawResponse.status !== STATUS.ACCEPTED) { alert('Something went wrong.'); }
     }
 });
 
 btnUpMinute.addEventListener('click', async () => {
-    if (timerMMValue.value < 59) {
-        timerMMValue.value = (parseInt(timerMMValue.value) + 1).toString().padStart(2, '0');
-    }
-    else {
-        timerMMValue.value = "00";
-    }
-    sendTimerData(command.SET_CURRENT_TIMER);
+    let mmValue = parseInt(timerMMValue.value) + 1;
+    let ssValue = parseInt(timerSSValue.value);
+    sendTimerData(mmValue, ssValue, command.SET_CURRENT_TIMER);
 });
 
 btnDownMinute.addEventListener('click', async () => {
-    if (timerMMValue.value > 0) {
-        timerMMValue.value = (parseInt(timerMMValue.value) - 1).toString().padStart(2, '0');
-    }
-    else {
-        timerMMValue.value = "59";
-    }
-    sendTimerData(command.SET_CURRENT_TIMER);
+    let mmValue = parseInt(timerMMValue.value) - 1;
+    let ssValue = parseInt(timerSSValue.value);
+    sendTimerData(mmValue, ssValue, command.SET_CURRENT_TIMER);
 });
 
 btnUpSecond.addEventListener('click', async () => {
-    if (timerSSValue.value < 59) {
-        timerSSValue.value = (parseInt(timerSSValue.value) + 1).toString().padStart(2, '0');
-    }
-    else {
-        timerSSValue.value = "00";
-    }
-    sendTimerData(command.SET_CURRENT_TIMER);
+    let mmValue = parseInt(timerMMValue.value);
+    let ssValue = parseInt(timerSSValue.value) + 1;
+    sendTimerData(mmValue, ssValue, command.SET_CURRENT_TIMER);
 });
 
 btnDownSecond.addEventListener('click', async () => {
-    if (timerSSValue.value > 0) {
-        timerSSValue.value = (parseInt(timerSSValue.value) - 1).toString().padStart(2, '0');
-    }
-    else {
-        timerSSValue.value = "59";
-    }
-    sendTimerData(command.SET_CURRENT_TIMER);
+    let mmValue = parseInt(timerMMValue.value);
+    let ssValue = parseInt(timerSSValue.value) - 1;
+    sendTimerData(mmValue, ssValue, command.SET_CURRENT_TIMER);
 });
 
 btnSetDefaultTimer.addEventListener('click', async () => {
-    if (parseInt(timerMMValue.value) === 0 && parseInt(timerSSValue.value) === 0) { alert('Timer cannot be 00:00.'); }
-    else { sendTimerData(command.SET_DEFAULT_TIMER); }
+    let mmValue = parseInt(timerMMValue.value);
+    let ssValue = parseInt(timerSSValue.value);
+    if (mmValue === 0 && ssValue === 0) { alert('Timer cannot be 00:00.'); }
+    else { sendTimerData(mmValue, ssValue, command.SET_DEFAULT_TIMER); }
 });
 
 btnResetTimer.addEventListener('click', async () => {
-    const rawResponse = await fetch(`http://${IP}/timer?cmd=${command.RESET_TIMER}`, {
-        headers: {
-            'Content-Type': 'text/css'
-        },
-        method: 'GET'
-    });
+    const rawResponse = await fetch(`http://${IP}/timer?cmd=${command.RESET_TIMER}`);
     if (rawResponse.status === STATUS.ACCEPTED) {
         const response = await rawResponse.text();
         setScoreboardValues(response);
@@ -241,12 +182,7 @@ btnResetTimer.addEventListener('click', async () => {
 
 // Reset all
 btnResetAll.addEventListener('click', async () => {
-    const rawResponse = await fetch(`http://${IP}/reset`, {
-        headers: {
-            'Content-Type': 'text/css'
-        },
-        method: 'GET'
-    });
+    const rawResponse = await fetch(`http://${IP}/reset`);
     if (rawResponse.status === STATUS.ACCEPTED) {
         const response = await rawResponse.text();
         setScoreboardValues(response);
@@ -270,12 +206,7 @@ window.addEventListener('load', async () => {
 
 // Solicitar datos y refrescar el tablero
 async function refreshScoreboard() {
-    const rawResponse = await fetch(`http://${IP}/scoreboard`, {
-        headers: {
-            'Content-Type': 'text/plain'
-        },
-        method: 'GET'
-    });
+    const rawResponse = await fetch(`http://${IP}/scoreboard`);
     if (rawResponse.status === STATUS.OK) {
         const response = await rawResponse.text();
         setScoreboardValues(response);
@@ -300,8 +231,8 @@ function stopAutoRequest() {
 // Plasmar datos en tablero
 function setScoreboardValues(dataString) {
     const data = dataString.split(',');
-    visitorValue.value = data[dataIndex.VISITOR].padStart(2, '0');
     localValue.value = data[dataIndex.LOCAL].padStart(2, '0');
+    visitorValue.value = data[dataIndex.VISITOR].padStart(2, '0');
     chukerValue.value = data[dataIndex.CHUKER];
     timerMMValue.value = data[dataIndex.TIMER_MM].padStart(2, '0');
     timerSSValue.value = data[dataIndex.TIMER_SS].padStart(2, '0');
@@ -309,13 +240,8 @@ function setScoreboardValues(dataString) {
 }
 
 // Enviar valores de timer a servidor
-async function sendTimerData(cmd) {
-    const rawResponse = await fetch(`http://${IP}/timer/set?mm=${timerMMValue.value}&ss=${timerSSValue.value}&cmd=${cmd}`, {
-        headers: {
-            'Content-Type': 'text/plain',
-        },
-        method: 'GET',
-    });
+async function sendTimerData(mm, ss, cmd) {
+    const rawResponse = await fetch(`http://${IP}/timer/set?mm=${mm}&ss=${ss}&cmd=${cmd}}`);
     if (rawResponse.status === STATUS.ACCEPTED) {
         const response = await rawResponse.text();
         setScoreboardValues(response);
