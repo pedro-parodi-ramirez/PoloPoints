@@ -56,25 +56,24 @@ enum timer_state_t{
 } timer_state = STOPPED;
 
 enum command_t{
-  INC_SCORE_LOCAL,
-  INC_SCORE_VISITOR,  
-  DEC_SCORE_LOCAL,
-  DEC_SCORE_VISITOR,
-  INC_CHUKER,
-  DEC_CHUKER,
-  START_TIMER,
-  STOP_TIMER,
-  RESET_TIMER,
-  SET_CURRENT_TIMER,
-  SET_DEFAULT_TIMER,
-  RESET_ALL
+  INC_SCORE_LOCAL   = 1,
+  INC_SCORE_VISITOR = 2,  
+  DEC_SCORE_LOCAL   = 3,
+  DEC_SCORE_VISITOR = 4,
+  INC_CHUKER        = 5,
+  DEC_CHUKER        = 6,
+  START_TIMER       = 7,
+  STOP_TIMER        = 8,
+  RESET_TIMER       = 9,
+  SET_CURRENT_TIMER = 10,
+  SET_DEFAULT_TIMER = 11,
+  RESET_ALL         = 12
 };
 
 enum request_status_t{
   STATUS_OK = 200,
   STATUS_ACCEPTED = 202,
   STATUS_BAD_REQUEST = 400,
-  STATUS_UNPROCESSABLE_ENTITY = 422,
   STATUS_NOT_FOUND = 404
 };
 
@@ -87,15 +86,15 @@ enum data_frame_index_t{
   FLASH,
   RESERVED_2,
   RESERVED_3,
+  SCORE_LOCAL_DECENA,
+  SCORE_LOCAL_UNIDAD,
   TIMER_MM_DECENA,
   TIMER_MM_UNIDAD,
+  CHUKER,
   TIMER_SS_DECENA,
   TIMER_SS_UNIDAD,
-  SCORE_VISITOR_UNIDAD,
   SCORE_VISITOR_DECENA,
-  SCORE_LOCAL_UNIDAD,
-  SCORE_LOCAL_DECENA,
-  CHUKER,
+  SCORE_VISITOR_UNIDAD,  
   DATA_END,
   CHECKSUM,
   FRAME_END
@@ -181,9 +180,13 @@ void setup()
       request->send(STATUS_BAD_REQUEST);
       return;
     }
-    AsyncWebParameter* p_0 = request->getParam(0);
-    AsyncWebParameter* p_1 = request->getParam(1);
-    AsyncWebParameter* p_2 = request->getParam(2);
+    if(!(request->hasParam("mm") && request->hasParam("ss") && request->hasParam("cmd"))){
+      request->send(STATUS_BAD_REQUEST);
+      return;
+    }
+    AsyncWebParameter* p_0 = request->getParam("mm");  
+    AsyncWebParameter* p_1 = request->getParam("ss");
+    AsyncWebParameter* p_2 = request->getParam("cmd");
     int mm = (p_0->value()).toInt();
     int ss = (p_1->value()).toInt();
     int cmd = (p_2->value()).toInt();
@@ -192,7 +195,7 @@ void setup()
       request->send(STATUS_ACCEPTED, "text/plain", data);
       cmdReceived = true;
     }
-    else{ request->send(STATUS_UNPROCESSABLE_ENTITY); }
+    else{ request->send(STATUS_BAD_REQUEST); }
   });
   
   server.on("/timer", HTTP_GET, [](AsyncWebServerRequest *request){
@@ -203,7 +206,11 @@ void setup()
       request->send(STATUS_BAD_REQUEST);
       return;
     }
-    AsyncWebParameter* p_0 = request->getParam(0);
+    if(!(request->hasParam("cmd"))){
+      request->send(STATUS_BAD_REQUEST);
+      return;
+    }
+    AsyncWebParameter* p_0 = request->getParam("cmd");
     int cmd = (p_0->value()).toInt();
     if(cmd == START_TIMER){
       Serial.println("Request to start the timer.");
@@ -239,10 +246,12 @@ void setup()
       request->send(STATUS_BAD_REQUEST);
       return;
     }
-    AsyncWebParameter* p_0 = request->getParam(0);
+    if(!(request->hasParam("cmd"))){
+      request->send(STATUS_BAD_REQUEST);
+      return;
+    }
+    AsyncWebParameter* p_0 = request->getParam("cmd");
     int cmd = (p_0->value()).toInt();
-    Serial.print("cmd: ");
-    Serial.println(cmd);
     if(cmd == INC_SCORE_VISITOR){
         Serial.println("Request to increase visitor score.");
         updateScores(INCREASE, VISITOR);
@@ -278,7 +287,11 @@ void setup()
       request->send(STATUS_BAD_REQUEST);
       return;
     }
-    AsyncWebParameter* p_0 = request->getParam(0);
+    if(!(request->hasParam("cmd"))){
+      request->send(STATUS_BAD_REQUEST);
+      return;
+    }
+    AsyncWebParameter* p_0 = request->getParam("cmd");
     int cmd = (p_0->value()).toInt();
     if(cmd == INC_CHUKER){
       Serial.println("Request to increase chuker.");
@@ -481,7 +494,10 @@ void resetTimer()
 
 // Setear valor en timer
 bool setTimerValue(int mm, int ss, int action){
-  if(timer_state == RUNNING || (mm == 0 && ss == 0)){ return false; }
+  if(timer_state == RUNNING){ return false; }
+  else if(mm == 0 && ss == 0){ return false; }
+  else if(mm < 0 || mm > 59){ return false; }
+  else if(ss < 0 || ss > 59){ return false; }
   if(action == SET_DEFAULT_TIMER){
     scoreboard.timer.initValue.mm = mm;
     scoreboard.timer.initValue.ss = ss;

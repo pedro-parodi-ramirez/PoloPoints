@@ -37,18 +37,18 @@ const timerSSValue = document.getElementById('timer-ss');
 let timerState = timerStatus.STOPPED;
 
 const command = {
-    INC_SCORE_LOCAL: 0,
-    INC_SCORE_VISITOR: 1,
-    DEC_SCORE_LOCAL: 2,
-    DEC_SCORE_VISITOR: 3,
-    INC_CHUKER: 4,
-    DEC_CHUKER: 5,
-    START_TIMER: 6,
-    STOP_TIMER: 7,
-    RESET_TIMER: 8,
-    SET_CURRENT_TIMER: 9,
-    SET_DEFAULT_TIMER: 10,
-    RESET_ALL: 11
+    INC_SCORE_LOCAL: 1,
+    INC_SCORE_VISITOR: 2,
+    DEC_SCORE_LOCAL: 3,
+    DEC_SCORE_VISITOR: 4,
+    INC_CHUKER: 5,
+    DEC_CHUKER: 6,
+    START_TIMER: 7,
+    STOP_TIMER: 8,
+    RESET_TIMER: 9,
+    SET_CURRENT_TIMER: 10,
+    SET_DEFAULT_TIMER: 11,
+    RESET_ALL: 12
 };
 
 const dataIndex = {
