@@ -6,3 +6,6 @@ https://articulo.mercadolibre.com.ar/MLA-896439120-modulo-amplificador-audio-diy
 
 3) Convertidor step-down 12V-5V
 Regulable: https://www.todomicro.com.ar/investigacion-desarrollo-y-prototipado/352-modulo-step-down-xl4005.html
+
+4) Antena
+https://articulo.mercadolibre.com.ar/MLA-1150085450-antena-de-escritorio-24ghz-5dbi-tl-ant2405c-tplink-interior-_JM#position=38&search_layout=grid&type=item&tracking_id=27d58507-d22f-4dda-839d-d58afef7cd97
