@@ -18,7 +18,7 @@
 const byte DATA_FRAME_ROWS = 20;   // Filas de la matriz dataFrame a enviar a placa controladora. Filas -> header, comando, dato, ...
 bool timerValueUpdate = false;
 bool cmdReceived = false;
-const char *ssid = "PoloPoints";
+const char *ssid = "Polo Points";
 const char *password = "12345678";
 AsyncWebServer server(80);
 
