@@ -29,17 +29,18 @@ hw_timer_t *Timer0_cfg = NULL;
 /***************************************************************************/
 /****************************** DATA TYPES *********************************/
 struct _timer_t{
-  int mm = 6;
-  int ss = 30;
+  int mm;
+  int ss;
 };
 
 struct scoreboard_t{
   int score[2] = {0, 0};
-  int chuker = 1;
+  int chukker = 1;
   struct __timer_t
   {
-    _timer_t value;
-    _timer_t initValue; // se usa para el comando reset_timer
+    _timer_t value = { 6,30 };
+    _timer_t initValue = { 6,30 };  // se usa para el comando reset_timer
+    _timer_t halftime = { 3,0 };    // 3' 0'' de descanso en intervalos
   } timer;
 } scoreboard;
 
@@ -55,19 +56,25 @@ enum timer_state_t{
   FINISHED
 } timer_state = STOPPED;
 
+enum game_state_t{
+  IN_PROGRESS,
+  HALFTIME
+} game_state = IN_PROGRESS;
+
 enum command_t{
   INC_SCORE_LOCAL   = 1,
   INC_SCORE_VISITOR = 2,  
   DEC_SCORE_LOCAL   = 3,
   DEC_SCORE_VISITOR = 4,
-  INC_CHUKER        = 5,
-  DEC_CHUKER        = 6,
+  INC_CHUKKER        = 5,
+  DEC_CHUKKER        = 6,
   START_TIMER       = 7,
   STOP_TIMER        = 8,
   RESET_TIMER       = 9,
   SET_CURRENT_TIMER = 10,
   SET_DEFAULT_TIMER = 11,
-  RESET_ALL         = 12
+  SET_HALFTIME_TIMER = 12,
+  RESET_ALL         = 13
 };
 
 enum request_status_t{
@@ -90,7 +97,7 @@ enum data_frame_index_t{
   SCORE_LOCAL_UNIDAD,
   TIMER_MM_DECENA,
   TIMER_MM_UNIDAD,
-  CHUKER,
+  CHUKKER,
   TIMER_SS_DECENA,
   TIMER_SS_UNIDAD,
   SCORE_VISITOR_DECENA,
@@ -105,13 +112,13 @@ enum data_frame_index_t{
 byte genChecksum(byte *dataFrame);
 void setDataFrame(scoreboard_t *scoreboard, byte *dataFrame);
 unsigned int setBufferTx(byte *bufferTx, byte *dataFrame);
-timer_state_t updateTimer(scoreboard_t *scoreboard);
+timer_state_t refreshTimer(scoreboard_t *scoreboard);
 void startTimer();
 void stopTimer();
 bool setTimerValue(int mm, int ss, int action);
 void resetTimer();
 void updateScores(int action, int team);
-void updateChuker(int action);
+void updateChukker(int action);
 void resetScoreboard();
 void setDataFrameHeaders(byte *dataFrame);
 void refreshScoreboard(scoreboard_t *scoreboard, byte *dataFrame, byte *bufferTx);
@@ -278,8 +285,8 @@ void setup()
     request->send(STATUS_ACCEPTED, "text/plain", data);
   });
 
-  // Chuker
-  server.on("/chuker", HTTP_GET, [](AsyncWebServerRequest *request){
+  // Chukker
+  server.on("/chukker", HTTP_GET, [](AsyncWebServerRequest *request){
     const int paramQty = request->params();
     String data;
     if(paramQty < 1){
@@ -293,13 +300,13 @@ void setup()
     }
     AsyncWebParameter* p_0 = request->getParam("cmd");
     int cmd = (p_0->value()).toInt();
-    if(cmd == INC_CHUKER){
-      Serial.println("Request to increase chuker.");
-      updateChuker(INCREASE);
+    if(cmd == INC_CHUKKER){
+      Serial.println("Request to increase chukker.");
+      updateChukker(INCREASE);
     }
-    else if(cmd == DEC_CHUKER){
-      Serial.println("Request to decrease chuker.");
-      updateChuker(DECREASE);
+    else if(cmd == DEC_CHUKKER){
+      Serial.println("Request to decrease chukker.");
+      updateChukker(DECREASE);
     }
     else{
       Serial.println("Parameter error -> cmd");
@@ -354,7 +361,7 @@ void loop()
       // Pasado un segundo, con el timer activo, se actualiza el tablero
       if (timerValueUpdate){
         timerValueUpdate = false;
-        timer_state = updateTimer();
+        timer_state = refreshTimer();
         main_state = REFRESH_SCOREBOARD;
       }
       // A la espera de comando por HTTP Request
@@ -420,7 +427,7 @@ void setDataFrame(scoreboard_t *scoreboard, byte *dataFrame)
   dataFrame[SCORE_VISITOR_DECENA] = (byte)(scoreboard->score[VISITOR] / 10 + '0');
   dataFrame[SCORE_LOCAL_UNIDAD] = (byte)(scoreboard->score[LOCAL] % 10 + '0');
   dataFrame[SCORE_LOCAL_DECENA] = (byte)(scoreboard->score[LOCAL] / 10 + '0');
-  dataFrame[CHUKER] = (byte)(scoreboard->chuker % 10 + '0');
+  dataFrame[CHUKKER] = (byte)(scoreboard->chukker % 10 + '0');
   dataFrame[CHECKSUM] = genChecksum(dataFrame);
 }
 
@@ -438,15 +445,22 @@ unsigned int setBufferTx(byte *bufferTx, byte *dataFrame)
 }
 
 // Actualiza timer, transcurrido un segundo
-timer_state_t updateTimer()
+timer_state_t refreshTimer()
 {
   scoreboard.timer.value.ss--;
   if (scoreboard.timer.value.mm == 0 && scoreboard.timer.value.ss == 0)
   {
-    // Detener y resetearlo el timer si llego a 00:00
-    timerStop(Timer0_cfg);
-    timerWrite(Timer0_cfg, 0);
-    return FINISHED;
+    if(game_state == HALFTIME){
+      // Detener y resetearlo el timer si finalizó el descanso
+      timerStop(Timer0_cfg);
+      timerWrite(Timer0_cfg, 0);
+      return FINISHED;
+    }
+    else{
+      game_state = HALFTIME;
+      scoreboard.timer.value.mm = scoreboard.timer.halftime.mm;
+      scoreboard.timer.value.ss = scoreboard.timer.halftime.ss;
+    }
   }
   else if (scoreboard.timer.value.ss < 0)
   {
@@ -490,11 +504,12 @@ void resetTimer()
   timerStop(Timer0_cfg);
   timerWrite(Timer0_cfg, 0);
   timer_state = STOPPED;
+  game_state = IN_PROGRESS;
 }
 
 // Setear valor en timer
 bool setTimerValue(int mm, int ss, int action){
-  if(timer_state == RUNNING){ return false; }
+  if(timer_state == RUNNING || timer_state == FINISHED){ return false; }
   else if(mm == 0 && ss == 0){ return false; }
   else if(mm < 0 || mm > 59){ return false; }
   else if(ss < 0 || ss > 59){ return false; }
@@ -507,6 +522,10 @@ bool setTimerValue(int mm, int ss, int action){
   else if (action == SET_CURRENT_TIMER){
     scoreboard.timer.value.mm = mm;
     scoreboard.timer.value.ss = ss;
+  }
+  else if (action == SET_HALFTIME_TIMER){
+    scoreboard.timer.halftime.mm = mm;
+    scoreboard.timer.halftime.ss = ss;
   }
   else{ return false; }
   return true;
@@ -523,15 +542,15 @@ void updateScores(int action, int team)
   else if (scoreboard.score[team] > 0){ scoreboard.score[team]--; }
 }
 
-// Actualizar chuker, segun la accion solicitada
-void updateChuker(int action)
+// Actualizar chukker, segun la accion solicitada
+void updateChukker(int action)
 {
   if (action == INCREASE)
   {
-    if (scoreboard.chuker < 9) { scoreboard.chuker++; }
-    else{ scoreboard.chuker = 0; }
+    if (scoreboard.chukker < 9) { scoreboard.chukker++; }
+    else{ scoreboard.chukker = 0; }
   }
-  else if (scoreboard.chuker > 0){ scoreboard.chuker--; }
+  else if (scoreboard.chukker > 0){ scoreboard.chukker--; }
 }
 
 // Llevar tablero a valor default
@@ -539,7 +558,7 @@ void resetScoreboard()
 {
   scoreboard.score[VISITOR] = 0;
   scoreboard.score[LOCAL] = 0;
-  scoreboard.chuker = 1;
+  scoreboard.chukker = 1;
   scoreboard.timer.value.mm = scoreboard.timer.initValue.mm;
   scoreboard.timer.value.ss = scoreboard.timer.initValue.ss;
 
@@ -547,6 +566,7 @@ void resetScoreboard()
   timerStop(Timer0_cfg);
   timerWrite(Timer0_cfg, 0);
   timer_state = STOPPED;
+  game_state = IN_PROGRESS;
 }
 
 // Actualizar datos en tablero, enviando los datos por serial a placa controladora
@@ -562,9 +582,10 @@ void refreshScoreboard(scoreboard_t *scoreboard, byte *dataFrame, byte *bufferTx
 String getScoreboard_toString(){
   String s = String(scoreboard.score[0]);
   s += "," + String(scoreboard.score[1]);
-  s += "," + String(scoreboard.chuker);
+  s += "," + String(scoreboard.chukker);
   s += "," + String(scoreboard.timer.value.mm);
   s += "," + String(scoreboard.timer.value.ss);
   s += "," + String(timer_state);
+  s += "," + String(game_state);
   return s;
 }

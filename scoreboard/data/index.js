@@ -10,14 +10,18 @@ const timerStatus = {
     RUNNING: 1,
     FINISHED: 2
 }
+const gameStatus = {
+    IN_PROGRESS: 0,
+    HALFTIME: 1
+}
 const REQUEST_PERIOD = 250;
 
 const btnUpVisitor = document.getElementById('up-visitor');
 const btnDownVisitor = document.getElementById('down-visitor');
 const btnUpLocal = document.getElementById('up-local');
 const btnDownLocal = document.getElementById('down-local');
-const btnUpChuker = document.getElementById('up-chuker');
-const btnDownChuker = document.getElementById('down-chuker');
+const btnUpChukker = document.getElementById('up-chukker');
+const btnDownChukker = document.getElementById('down-chukker');
 const btnStartTimer = document.getElementById('start-timer');
 const btnStopTimer = document.getElementById('stop-timer');
 const btnResetTimer = document.getElementById('reset-timer');
@@ -31,33 +35,37 @@ const IP = "192.168.4.1";
 let refreshTimer = null;
 const localValue = document.getElementById('local');
 const visitorValue = document.getElementById('visitor');
-const chukerValue = document.getElementById('chuker');
+const chukkerValue = document.getElementById('chukker');
 const timerMMValue = document.getElementById('timer-mm');
 const timerSSValue = document.getElementById('timer-ss');
+const intervalMark = document.getElementById('interval-mark');
 let timerState = timerStatus.STOPPED;
+let gameState = gameStatus.IN_PROGRESS;
 
 const command = {
     INC_SCORE_LOCAL: 1,
     INC_SCORE_VISITOR: 2,
     DEC_SCORE_LOCAL: 3,
     DEC_SCORE_VISITOR: 4,
-    INC_CHUKER: 5,
-    DEC_CHUKER: 6,
+    INC_CHUKKER: 5,
+    DEC_CHUKKER: 6,
     START_TIMER: 7,
     STOP_TIMER: 8,
     RESET_TIMER: 9,
     SET_CURRENT_TIMER: 10,
     SET_DEFAULT_TIMER: 11,
-    RESET_ALL: 12
+    SET_HALFTIME_TIMER: 12,
+    RESET_ALL: 13
 };
 
 const dataIndex = {
     LOCAL: 0,
     VISITOR: 1,
-    CHUKER: 2,
+    CHUKKER: 2,
     TIMER_MM: 3,
     TIMER_SS: 4,
-    TIMER_STATE: 5
+    TIMER_STATE: 5,
+    GAME_STATE: 6
 }
 
 /* -------------------------------------------------------------------------------------------------------------- */
@@ -98,17 +106,17 @@ btnDownLocal.addEventListener('click', async () => {
     }
 });
 
-// Chuker
-btnUpChuker.addEventListener('click', async () => {
-    const rawResponse = await fetch(`http://${IP}/chuker?cmd=${command.INC_CHUKER}`);
+// chukker
+btnUpChukker.addEventListener('click', async () => {
+    const rawResponse = await fetch(`http://${IP}/chukker?cmd=${command.INC_CHUKKER}`);
     if (rawResponse.status === STATUS.ACCEPTED) {
         const response = await rawResponse.text();
         setScoreboardValues(response);
     }
 });
 
-btnDownChuker.addEventListener('click', async () => {
-    const rawResponse = await fetch(`http://${IP}/chuker?cmd=${command.DEC_CHUKER}`);
+btnDownChukker.addEventListener('click', async () => {
+    const rawResponse = await fetch(`http://${IP}/chukker?cmd=${command.DEC_CHUKKER}`);
     if (rawResponse.status === STATUS.ACCEPTED) {
         const response = await rawResponse.text();
         setScoreboardValues(response);
@@ -233,10 +241,11 @@ function setScoreboardValues(dataString) {
     const data = dataString.split(',');
     localValue.value = data[dataIndex.LOCAL].padStart(2, '0');
     visitorValue.value = data[dataIndex.VISITOR].padStart(2, '0');
-    chukerValue.value = data[dataIndex.CHUKER];
+    chukkerValue.value = data[dataIndex.CHUKKER];
     timerMMValue.value = data[dataIndex.TIMER_MM].padStart(2, '0');
     timerSSValue.value = data[dataIndex.TIMER_SS].padStart(2, '0');
     timerState = parseInt(data[dataIndex.TIMER_STATE]);
+    gameState = parseInt(data[dataIndex.GAME_STATE]);
 }
 
 // Enviar valores de timer a servidor
@@ -252,6 +261,8 @@ async function sendTimerData(mm, ss, cmd) {
 
 // Fijar opciones en front-end segun estado de timer
 function setOptions() {
+    if (gameState === gameStatus.IN_PROGRESS) { intervalMark.hidden = true; }
+    else { intervalMark.hidden = false; }
     if (timerState === timerStatus.STOPPED) {
         btnStopTimer.disabled = true;
         btnStartTimer.disabled = false;
@@ -260,7 +271,7 @@ function setOptions() {
         btnUpSecond.disabled = false;
         btnDownSecond.disabled = false;
         btnResetTimer.disabled = false;
-        btnSetDefaultTimer.disabled = false;
+        if (gameState === gameStatus.IN_PROGRESS) { btnSetDefaultTimer.disabled = false; }
     }
     else if (timerState === timerStatus.RUNNING) {
         btnStopTimer.disabled = false;
