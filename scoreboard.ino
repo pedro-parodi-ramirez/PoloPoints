@@ -12,6 +12,7 @@
 #define DOT_VALUE 0x80
 #define TX_MAX_LONG 50
 #define MAX_CONNECTIONS 1
+#define LOG_TO_CONSOLE 0
 
 /***************************************************************************/
 /******************************** GLOBAL ***********************************/
@@ -62,19 +63,19 @@ enum game_state_t{
 } game_state = IN_PROGRESS;
 
 enum command_t{
-  INC_SCORE_LOCAL   = 1,
-  INC_SCORE_VISITOR = 2,  
-  DEC_SCORE_LOCAL   = 3,
-  DEC_SCORE_VISITOR = 4,
-  INC_CHUKKER        = 5,
-  DEC_CHUKKER        = 6,
-  START_TIMER       = 7,
-  STOP_TIMER        = 8,
-  RESET_TIMER       = 9,
-  SET_CURRENT_TIMER = 10,
-  SET_DEFAULT_TIMER = 11,
-  SET_HALFTIME_TIMER = 12,
-  RESET_ALL         = 13
+  INC_SCORE_LOCAL     = 1,
+  INC_SCORE_VISITOR   = 2,  
+  DEC_SCORE_LOCAL     = 3,
+  DEC_SCORE_VISITOR   = 4,
+  INC_CHUKKER         = 5,
+  DEC_CHUKKER         = 6,
+  START_TIMER         = 7,
+  STOP_TIMER          = 8,
+  RESET_TIMER         = 9,
+  SET_CURRENT_TIMER   = 10,
+  SET_DEFAULT_TIMER   = 11,
+  SET_HALFTIME_TIMER  = 12,
+  RESET_ALL           = 13
 };
 
 enum request_status_t{
@@ -93,15 +94,15 @@ enum data_frame_index_t{
   FLASH,
   RESERVED_2,
   RESERVED_3,
-  SCORE_LOCAL_DECENA,
-  SCORE_LOCAL_UNIDAD,
+  SCORE_VISITOR_DECENA,
+  SCORE_VISITOR_UNIDAD,
   TIMER_MM_DECENA,
   TIMER_MM_UNIDAD,
   CHUKKER,
   TIMER_SS_DECENA,
   TIMER_SS_UNIDAD,
-  SCORE_VISITOR_DECENA,
-  SCORE_VISITOR_UNIDAD,  
+  SCORE_LOCAL_DECENA,
+  SCORE_LOCAL_UNIDAD,
   DATA_END,
   CHECKSUM,
   FRAME_END
@@ -146,20 +147,22 @@ void setup()
 
   // Inicializar SPIFFS
   if (!SPIFFS.begin(true)){
-    Serial.println("Something went wrong mountint SPIFFS.");
+    if(LOG_TO_CONSOLE){ Serial.println("Something went wrong mountint SPIFFS."); }
     return;
   }
 
   /* WIFI ACCESS POINT */
-  Serial.println("Setting AP (Access Point) ...");
+  if(LOG_TO_CONSOLE){ Serial.println("Setting AP (Access Point) ..."); }
   if (!WiFi.softAP(ssid, password, 1, false, MAX_CONNECTIONS)){
-    Serial.println("Something went wrong configuring AP!");
+    if(LOG_TO_CONSOLE){ Serial.println("Something went wrong configuring AP!"); }
   }
 
   IPAddress IP = WiFi.softAPIP();
-  Serial.print("AP IP address: ");
-  Serial.println(IP);
-
+  if(LOG_TO_CONSOLE){
+    Serial.print("AP IP address: ");
+    Serial.println(IP);
+  }
+  
   /***************************************************************************/
   /***************************** HTTP REQUEST ********************************/
   // Ruta a index.html
@@ -181,9 +184,9 @@ void setup()
   server.on("/timer/set", HTTP_GET, [](AsyncWebServerRequest * request){
     const int paramQty = request->params();
     String data;
-    Serial.println("Request to set timer value");
+    if(LOG_TO_CONSOLE){ Serial.println("Request to set timer value"); }
     if(paramQty < 3){
-      Serial.println("Not enought parameters.");
+      if(LOG_TO_CONSOLE){ Serial.println("Not enought parameters."); }
       request->send(STATUS_BAD_REQUEST);
       return;
     }
@@ -209,7 +212,7 @@ void setup()
     const int paramQty = request->params();
     String data;
     if(paramQty < 1){
-      Serial.println("Not enought parameters.");
+      if(LOG_TO_CONSOLE){ Serial.println("Not enought parameters."); }
       request->send(STATUS_BAD_REQUEST);
       return;
     }
@@ -220,26 +223,26 @@ void setup()
     AsyncWebParameter* p_0 = request->getParam("cmd");
     int cmd = (p_0->value()).toInt();
     if(cmd == START_TIMER){
-      Serial.println("Request to start the timer.");
+      if(LOG_TO_CONSOLE){ Serial.println("Request to start the timer."); }
       startTimer();
       cmdReceived = true;
       request->send(STATUS_ACCEPTED);
     }
     else if(cmd == STOP_TIMER){
-      Serial.println("Request to stop the timer.");
+      if(LOG_TO_CONSOLE){ Serial.println("Request to stop the timer."); }
       stopTimer();
       cmdReceived = true;
       request->send(STATUS_ACCEPTED);
     }
     else if(cmd == RESET_TIMER){
-      Serial.println("Request to reset the timer.");
+      if(LOG_TO_CONSOLE){ Serial.println("Request to reset the timer."); }
       cmdReceived = true;
       resetTimer();
       data = getScoreboard_toString();
       request->send(STATUS_ACCEPTED, "text/plain", data);
     }
     else{
-      Serial.println("Parameter error -> cmd");
+      if(LOG_TO_CONSOLE){ Serial.println("Parameter error -> cmd"); }
       request->send(STATUS_BAD_REQUEST);
     }
   });
@@ -249,7 +252,7 @@ void setup()
     const int paramQty = request->params();
     String data;
     if(paramQty < 1){
-      Serial.println("Not enought parameters.");
+      if(LOG_TO_CONSOLE){ Serial.println("Not enought parameters."); }
       request->send(STATUS_BAD_REQUEST);
       return;
     }
@@ -260,23 +263,23 @@ void setup()
     AsyncWebParameter* p_0 = request->getParam("cmd");
     int cmd = (p_0->value()).toInt();
     if(cmd == INC_SCORE_VISITOR){
-        Serial.println("Request to increase visitor score.");
+        if(LOG_TO_CONSOLE){ Serial.println("Request to increase visitor score."); }
         updateScores(INCREASE, VISITOR);
     }
     else if(cmd == INC_SCORE_LOCAL){
-      Serial.println("Request to increase local score.");
+      if(LOG_TO_CONSOLE){ Serial.println("Request to increase local score."); }
       updateScores(INCREASE, LOCAL);
     }
     else if(cmd == DEC_SCORE_VISITOR){
-      Serial.println("Request to decrease visitor score.");
+      if(LOG_TO_CONSOLE){ Serial.println("Request to decrease visitor score."); }
       updateScores(DECREASE, VISITOR);
     }
     else if(cmd == DEC_SCORE_LOCAL){
-      Serial.println("Request to decrease local score.");
+      if(LOG_TO_CONSOLE){ Serial.println("Request to decrease local score."); }
       updateScores(DECREASE, LOCAL);
     }
     else{
-      Serial.println("Parameter error -> cmd");
+      if(LOG_TO_CONSOLE){ Serial.println("Parameter error -> cmd"); }
       request->send(STATUS_BAD_REQUEST);
       return;
     }
@@ -290,7 +293,7 @@ void setup()
     const int paramQty = request->params();
     String data;
     if(paramQty < 1){
-      Serial.println("Not enought parameters.");
+      if(LOG_TO_CONSOLE){ Serial.println("Not enought parameters."); }
       request->send(STATUS_BAD_REQUEST);
       return;
     }
@@ -301,15 +304,15 @@ void setup()
     AsyncWebParameter* p_0 = request->getParam("cmd");
     int cmd = (p_0->value()).toInt();
     if(cmd == INC_CHUKKER){
-      Serial.println("Request to increase chukker.");
+      if(LOG_TO_CONSOLE){ Serial.println("Request to increase chukker."); }
       updateChukker(INCREASE);
     }
     else if(cmd == DEC_CHUKKER){
-      Serial.println("Request to decrease chukker.");
+      if(LOG_TO_CONSOLE){ Serial.println("Request to decrease chukker."); }
       updateChukker(DECREASE);
     }
     else{
-      Serial.println("Parameter error -> cmd");
+      if(LOG_TO_CONSOLE){ Serial.println("Parameter error -> cmd"); }
       request->send(STATUS_BAD_REQUEST);
       return;
     }
@@ -321,7 +324,7 @@ void setup()
   // Reset tablero a valores default
   server.on("/reset", HTTP_GET, [](AsyncWebServerRequest *request){
     String data;
-    Serial.println("Request to reset all scoreboard values.");
+    if(LOG_TO_CONSOLE){ Serial.println("Request to reset all scoreboard values."); }
     resetScoreboard();
     cmdReceived = true;
     data = getScoreboard_toString();
@@ -330,14 +333,14 @@ void setup()
 
   // Obtener datos de tablero como string
   server.on("/scoreboard", HTTP_GET, [](AsyncWebServerRequest *request){
-    Serial.println("Sending board data ...");
+    if(LOG_TO_CONSOLE){ Serial.println("Sending board data ..."); }
     String data = getScoreboard_toString();
     request->send(STATUS_OK, "text/plain", data);
   });
 
   // Rutas no definidas
   server.onNotFound([](AsyncWebServerRequest *request){
-    Serial.println("Request for undefined route.");
+    if(LOG_TO_CONSOLE){ Serial.println("Request for undefined route."); }
     request->send(STATUS_NOT_FOUND, "text/plain", "Page not found.");
   });
 
@@ -350,6 +353,7 @@ void loop()
 {
   byte bufferTx[TX_MAX_LONG];
   byte dataFrame[DATA_FRAME_ROWS];
+  bool init = false;
   
   /*********************************************************************************/
   /****************************** STATE MACHINE LOOP *******************************/
@@ -375,9 +379,19 @@ void loop()
       main_state = IDLE;
       break;
     case INIT:
+      if(LOG_TO_CONSOLE){ Serial.println("Inicializando tablero ..."); }
       setDataFrameHeaders(dataFrame);
       refreshScoreboard(&scoreboard, dataFrame, bufferTx);
-      main_state = IDLE;
+      while(!init){
+        if(Serial.available()){
+          if(Serial.read() == 0xCC){ init = true; }
+        }
+        delay(1000);
+        refreshScoreboard(&scoreboard, dataFrame, bufferTx); // nuevo intento de inicializar tablero
+      }
+      if(LOG_TO_CONSOLE){ Serial.println("Inicialización exitosa!"); }
+      dataFrame[RESPONSE] = 0x01;                           // comunicacion con placa controladora sin código
+      main_state = IDLE;                                    // de retorno (solo necesario para inicializacion)                                    
       break;
     default:
       main_state = IDLE;
@@ -394,7 +408,7 @@ void setDataFrameHeaders(byte *dataFrame){
   dataFrame[HEADER] = 0x7F;
   dataFrame[COMMAND] = 0xDD;    // enviar data
   dataFrame[ADDRESS] = 0x00;    // broadcast
-  dataFrame[RESPONSE] = 0x01;   // no return code
+  dataFrame[RESPONSE] = 0x00;   // codigo de retorno habilitado (solo para inicializacion, confirmando comunicacion)
   dataFrame[RESERVED_1] = 0x00;
   dataFrame[FLASH] = 0x01;      // no guardar en flash
   dataFrame[RESERVED_2] = 0x00;
@@ -414,21 +428,6 @@ byte genChecksum(byte *dataFrame)
     checksum += dataFrame[i];
   }
   return (byte)(checksum & 0xFF); // el checksum es byte menos significativo
-}
-
-// Se convierten valores numéricos a valores ASCII y se asignan al dataFrame a enviar al tablero
-void setDataFrame(scoreboard_t *scoreboard, byte *dataFrame)
-{
-  dataFrame[TIMER_MM_DECENA] = (byte)(scoreboard->timer.value.mm / 10 + '0');
-  dataFrame[TIMER_MM_UNIDAD] = (byte)(scoreboard->timer.value.mm % 10 + '0') + DOT_VALUE;
-  dataFrame[TIMER_SS_DECENA] = (byte)(scoreboard->timer.value.ss / 10 + '0') + DOT_VALUE;
-  dataFrame[TIMER_SS_UNIDAD] = (byte)(scoreboard->timer.value.ss % 10 + '0');
-  dataFrame[SCORE_VISITOR_UNIDAD] = (byte)(scoreboard->score[VISITOR] % 10 + '0');
-  dataFrame[SCORE_VISITOR_DECENA] = (byte)(scoreboard->score[VISITOR] / 10 + '0');
-  dataFrame[SCORE_LOCAL_UNIDAD] = (byte)(scoreboard->score[LOCAL] % 10 + '0');
-  dataFrame[SCORE_LOCAL_DECENA] = (byte)(scoreboard->score[LOCAL] / 10 + '0');
-  dataFrame[CHUKKER] = (byte)(scoreboard->chukker % 10 + '0');
-  dataFrame[CHECKSUM] = genChecksum(dataFrame);
 }
 
 // Copia los datos de data frame a buffer a transmitir por serial
@@ -576,6 +575,21 @@ void refreshScoreboard(scoreboard_t *scoreboard, byte *dataFrame, byte *bufferTx
   setDataFrame(scoreboard, dataFrame);                 // setear la trama de datos a enviar
   DATA_FRAME_BYTES = setBufferTx(bufferTx, dataFrame); // setear buffer para enviar por serial
   Serial.write(bufferTx, DATA_FRAME_BYTES);            // enviar data
+}
+
+// Se convierten valores numéricos a valores ASCII y se asignan al dataFrame a enviar al tablero
+void setDataFrame(scoreboard_t *scoreboard, byte *dataFrame)
+{
+  dataFrame[TIMER_MM_DECENA] = (byte)(scoreboard->timer.value.mm / 10 + '0');
+  dataFrame[TIMER_MM_UNIDAD] = (byte)(scoreboard->timer.value.mm % 10 + '0') + DOT_VALUE;
+  dataFrame[TIMER_SS_DECENA] = (byte)(scoreboard->timer.value.ss / 10 + '0') + DOT_VALUE;
+  dataFrame[TIMER_SS_UNIDAD] = (byte)(scoreboard->timer.value.ss % 10 + '0');
+  dataFrame[SCORE_VISITOR_UNIDAD] = (byte)(scoreboard->score[VISITOR] % 10 + '0');
+  dataFrame[SCORE_VISITOR_DECENA] = (byte)(scoreboard->score[VISITOR] / 10 + '0');
+  dataFrame[SCORE_LOCAL_UNIDAD] = (byte)(scoreboard->score[LOCAL] % 10 + '0');
+  dataFrame[SCORE_LOCAL_DECENA] = (byte)(scoreboard->score[LOCAL] / 10 + '0');
+  dataFrame[CHUKKER] = (byte)(scoreboard->chukker % 10 + '0');
+  dataFrame[CHECKSUM] = genChecksum(dataFrame);
 }
 
 // Transformar los datos del tablero en una cadena concatenada, para enviar a front-end
