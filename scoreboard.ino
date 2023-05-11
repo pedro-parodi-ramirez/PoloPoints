@@ -94,15 +94,15 @@ enum data_frame_index_t{
   FLASH,
   RESERVED_2,
   RESERVED_3,
-  SCORE_VISITOR_DECENA,
-  SCORE_VISITOR_UNIDAD,
+  SCORE_LOCAL_DECENA,
+  SCORE_LOCAL_UNIDAD,
   TIMER_MM_DECENA,
   TIMER_MM_UNIDAD,
   CHUKKER,
   TIMER_SS_DECENA,
   TIMER_SS_UNIDAD,
-  SCORE_LOCAL_DECENA,
-  SCORE_LOCAL_UNIDAD,
+  SCORE_VISITOR_DECENA,
+  SCORE_VISITOR_UNIDAD,
   DATA_END,
   CHECKSUM,
   FRAME_END
@@ -381,17 +381,16 @@ void loop()
     case INIT:
       if(LOG_TO_CONSOLE){ Serial.println("Inicializando tablero ..."); }
       setDataFrameHeaders(dataFrame);
-      refreshScoreboard(&scoreboard, dataFrame, bufferTx);
-      while(!init){
+      do{
+        refreshScoreboard(&scoreboard, dataFrame, bufferTx); // nuevo intento de inicializar tablero
         if(Serial.available()){
           if(Serial.read() == 0xCC){ init = true; }
         }
-        delay(1000);
-        refreshScoreboard(&scoreboard, dataFrame, bufferTx); // nuevo intento de inicializar tablero
-      }
+        else{ delay(1000); }
+      }while(!init);
       if(LOG_TO_CONSOLE){ Serial.println("Inicialización exitosa!"); }
-      dataFrame[RESPONSE] = 0x01;                           // comunicacion con placa controladora sin código
-      main_state = IDLE;                                    // de retorno (solo necesario para inicializacion)                                    
+      dataFrame[RESPONSE] = 0x01;   // comunicacion con placa controladora sin código
+      main_state = IDLE;            // de retorno (solo necesario para inicializacion)                                    
       break;
     default:
       main_state = IDLE;
