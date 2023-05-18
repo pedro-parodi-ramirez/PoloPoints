@@ -354,6 +354,7 @@ void loop()
   byte bufferTx[TX_MAX_LONG];
   byte dataFrame[DATA_FRAME_ROWS];
   bool init = false;
+  byte i;
   
   /*********************************************************************************/
   /****************************** STATE MACHINE LOOP *******************************/
@@ -381,14 +382,18 @@ void loop()
     case INIT:
       if(LOG_TO_CONSOLE){ Serial.println("Inicializando tablero ..."); }
       setDataFrameHeaders(dataFrame);
-      do{
-        refreshScoreboard(&scoreboard, dataFrame, bufferTx); // nuevo intento de inicializar tablero
-        if(Serial.available()){
-          if(Serial.read() == 0xCC){ init = true; }
-        }
-        else{ delay(1000); }
-      }while(!init);
-      if(LOG_TO_CONSOLE){ Serial.println("Inicialización exitosa!"); }
+      for(i=0;i<5;i++){
+        refreshScoreboard(&scoreboard, dataFrame, bufferTx);
+        delay(1000);
+      }
+      //do{
+      //  refreshScoreboard(&scoreboard, dataFrame, bufferTx); // nuevo intento de inicializar tablero
+      //  if(Serial.available()){
+      //    if(Serial.read() == 0xCC){ init = true; }
+      //  }
+      //  else{ delay(1000); }
+      //}while(!init);
+      //if(LOG_TO_CONSOLE){ Serial.println("Inicialización exitosa!"); }
       dataFrame[RESPONSE] = 0x01;   // comunicacion con placa controladora sin código
       main_state = IDLE;            // de retorno (solo necesario para inicializacion)                                    
       break;
