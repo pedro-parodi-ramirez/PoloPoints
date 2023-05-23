@@ -1,34 +1,55 @@
 #include "WiFi.h"
 #include "ESPAsyncWebServer.h"
 #include "SPIFFS.h"
+#include "driver/dac.h"
 
 /***************************************************************************/
 /******************************** DEFINES **********************************/
-#define DECREASE 0
-#define INCREASE 1
-#define LOCAL 0
-#define VISITOR 1
-#define SECOND_IN_MICROS 1000000
-#define DOT_VALUE 0x80
-#define TX_MAX_LONG 50
 #define MAX_CONNECTIONS 1
 #define LOG_TO_CONSOLE 0
+#define ALARM_FREQ 261 // Aprox. un DO
+#define ALARM_TIMEOUT 2
 
 /***************************************************************************/
 /******************************** GLOBAL ***********************************/
 const byte DATA_FRAME_ROWS = 20;   // Filas de la matriz dataFrame a enviar a placa controladora. Filas -> header, comando, dato, ...
+const byte DAC_SAMPLE_VALUES = 100;
+const int TICKS_FOR_DAC = 10000000 / (ALARM_FREQ * DAC_SAMPLE_VALUES);
+const byte TX_MAX_LONG = 50; 
+const byte DOT_VALUE = 0x80;
+const int SECOND_IN_MICROS = 1000000;
+const byte DECREASE = 0;
+const byte INCREASE = 1;
+const byte LOCAL = 0;
+const byte VISITOR = 1;
+byte alarmSecond = 0;
 bool timerValueUpdate = false;
 bool cmdReceived = false;
 const char *ssid = "Polo Points";
 const char *password = "12345678";
 AsyncWebServer server(80);
 
+// LookUpTable Senoidal & Index
+byte SampleIdx = 0;
+const byte sineLookupTable[DAC_SAMPLE_VALUES] = {
+0x80, 0x88, 0x8f, 0x97, 0x9f, 0xa7, 0xae, 0xb6, 0xbd, 0xc4, 0xca, 0xd1, 0xd7, 0xdc, 0xe2, 0xe7, 0xeb, 0xef, 0xf3, 0xf6,
+0xf9, 0xfb, 0xfd, 0xfe, 0xff, 0xff, 0xff, 0xfe, 0xfd, 0xfb, 0xf9, 0xf6, 0xf3, 0xef, 0xeb, 0xe7, 0xe2, 0xdc, 0xd7, 0xd1,
+0xca, 0xc4, 0xbd, 0xb6, 0xae, 0xa7, 0x9f, 0x97, 0x8f, 0x88, 0x80, 0x77, 0x70, 0x68, 0x60, 0x58, 0x51, 0x49, 0x42, 0x3b,
+0x35, 0x2e, 0x28, 0x23, 0x1d, 0x18, 0x14, 0x10, 0x0c, 0x09, 0x06, 0x04, 0x02, 0x01, 0x00, 0x00, 0x00, 0x01, 0x02, 0x04,
+0x06, 0x09, 0x0c, 0x10, 0x14, 0x18, 0x1d, 0x23, 0x28, 0x2e, 0x35, 0x3b, 0x42, 0x49, 0x51, 0x58, 0x60, 0x68, 0x70, 0x77};
+
 /***************************************************************************/
 /********************************* TIMER ***********************************/
 hw_timer_t *Timer0_cfg = NULL;
+hw_timer_t *Timer1_cfg = NULL;
 
 /***************************************************************************/
 /****************************** DATA TYPES *********************************/
+enum alarm_state_t{
+  ALARM_OFF,
+  ALARM_ON
+} alarm_state = ALARM_OFF;
+
 struct _timer_t{
   int mm;
   int ss;
@@ -113,6 +134,8 @@ enum data_frame_index_t{
 byte genChecksum(byte *dataFrame);
 void setDataFrame(scoreboard_t *scoreboard, byte *dataFrame);
 unsigned int setBufferTx(byte *bufferTx, byte *dataFrame);
+void startAlarm();
+void stopAlarm();
 timer_state_t refreshTimer(scoreboard_t *scoreboard);
 void startTimer();
 void stopTimer();
@@ -130,6 +153,16 @@ String getScoreboard_toString();
 void IRAM_ATTR Timer0_ISR()
 {
   timerValueUpdate = true;
+  if(alarm_state == ALARM_ON){
+    alarmSecond++;
+  }
+}
+
+void IRAM_ATTR Timer1_ISR()
+{
+  // Setear valor del DAC segun tabla de valores de señal senoidal
+  dac_output_voltage(DAC_CHANNEL_1, sineLookupTable[SampleIdx++]);
+  if(SampleIdx >= DAC_SAMPLE_VALUES) SampleIdx = 0;
 }
 
 /**************************************************************** SETUP ****************************************************************/
@@ -137,6 +170,8 @@ void setup()
 {
   // put your setup code here, to run once:
   Serial.begin(9600);
+
+  // Timer 0: timer del tablero
   Timer0_cfg = timerBegin(0, 80, true);
   timerAttachInterrupt(Timer0_cfg, &Timer0_ISR, true);
   timerAlarmWrite(Timer0_cfg, SECOND_IN_MICROS, true);
@@ -144,6 +179,15 @@ void setup()
   // El timer inicia automaticamente con timerBegin, por lo tanto se frena y reinicia contador
   timerStop(Timer0_cfg);
   timerWrite(Timer0_cfg, 0);
+
+  // Timer 1: usado para el DAC (salida de audio)
+  Timer1_cfg = timerBegin(1, 8, true);
+  timerAttachInterrupt(Timer1_cfg, &Timer1_ISR, true);
+  timerAlarmWrite(Timer1_cfg, TICKS_FOR_DAC, true);    // timer_interrup 1MHz -> DAC 100KSPS (con arreglo de 100 muestras)
+  timerAlarmEnable(Timer1_cfg);
+  // Se inhabilitan componentes, solo se habilitan en determinado momento
+  timerStop(Timer1_cfg);
+  dac_output_disable(DAC_CHANNEL_1);
 
   // Inicializar SPIFFS
   if (!SPIFFS.begin(true)){
@@ -353,7 +397,7 @@ void loop()
 {
   byte bufferTx[TX_MAX_LONG];
   byte dataFrame[DATA_FRAME_ROWS];
-  bool init = false;
+  //bool init = false;
   byte i;
   
   /*********************************************************************************/
@@ -447,9 +491,28 @@ unsigned int setBufferTx(byte *bufferTx, byte *dataFrame)
   return bytes_to_transfer;
 }
 
+// Iniciar alarma
+void startAlarm(){
+  timerStart(Timer1_cfg);
+  dac_output_enable(DAC_CHANNEL_1);
+  alarm_state = ALARM_ON;
+}
+
+// Detener alarma
+void stopAlarm(){
+  timerStop(Timer1_cfg);
+  dac_output_disable(DAC_CHANNEL_1);
+  alarm_state = ALARM_OFF;
+  alarmSecond = 0;
+}
+
 // Actualiza timer, transcurrido un segundo
 timer_state_t refreshTimer()
 {
+  // Apagar alarma si corresponde
+  if(alarm_state == ALARM_ON && alarmSecond >= ALARM_TIMEOUT) stopAlarm();
+
+  // Actualizar timer
   scoreboard.timer.value.ss--;
   if (scoreboard.timer.value.mm == 0 && scoreboard.timer.value.ss == 0)
   {
@@ -482,8 +545,11 @@ void startTimer()
 {
   if (timer_state == STOPPED && !(scoreboard.timer.value.mm == 0 && scoreboard.timer.value.ss == 0))
   {
+    // Iniciar timer
     timerStart(Timer0_cfg);
     timer_state = RUNNING;
+
+    if(game_state == IN_PROGRESS) startAlarm();
   }
 }
 
@@ -494,6 +560,8 @@ void stopTimer()
   {
     timerStop(Timer0_cfg);
     timer_state = STOPPED;
+
+    if(alarm_state == ALARM_ON) stopAlarm();
   }
 }
 
@@ -508,6 +576,8 @@ void resetTimer()
   timerWrite(Timer0_cfg, 0);
   timer_state = STOPPED;
   game_state = IN_PROGRESS;
+  
+  stopAlarm();
 }
 
 // Setear valor en timer
@@ -570,6 +640,8 @@ void resetScoreboard()
   timerWrite(Timer0_cfg, 0);
   timer_state = STOPPED;
   game_state = IN_PROGRESS;
+
+  stopAlarm();
 }
 
 // Actualizar datos en tablero, enviando los datos por serial a placa controladora
