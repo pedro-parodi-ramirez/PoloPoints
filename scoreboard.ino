@@ -22,7 +22,6 @@ const byte DECREASE = 0;
 const byte INCREASE = 1;
 const byte LOCAL = 0;
 const byte VISITOR = 1;
-byte alarmSecond = 0;
 bool timerValueUpdate = false;
 bool cmdReceived = false;
 const char *ssid = "Polo Points";
@@ -45,10 +44,11 @@ hw_timer_t *Timer1_cfg = NULL;
 
 /***************************************************************************/
 /****************************** DATA TYPES *********************************/
-enum alarm_state_t{
-  ALARM_OFF,
-  ALARM_ON
-} alarm_state = ALARM_OFF;
+struct alarm_t{
+  bool active = false;
+  bool enabled = true;
+  byte seconds = ALARM_TIMEOUT;
+} alarm_obj;
 
 struct _timer_t{
   int mm;
@@ -153,8 +153,8 @@ String getScoreboard_toString();
 void IRAM_ATTR Timer0_ISR()
 {
   timerValueUpdate = true;
-  if(alarm_state == ALARM_ON){
-    alarmSecond++;
+  if(alarm_obj.active == true){
+    alarm_obj.seconds--;
   }
 }
 
@@ -493,31 +493,34 @@ unsigned int setBufferTx(byte *bufferTx, byte *dataFrame)
 
 // Iniciar alarma
 void startAlarm(){
-  timerStart(Timer1_cfg);
-  dac_output_enable(DAC_CHANNEL_1);
-  alarm_state = ALARM_ON;
+  if(alarm_obj.enabled == true){
+    timerStart(Timer1_cfg);
+    dac_output_enable(DAC_CHANNEL_1);
+    alarm_obj.active = true;
+    alarm_obj.enabled = false;
+  }
 }
 
 // Detener alarma
 void stopAlarm(){
   timerStop(Timer1_cfg);
   dac_output_disable(DAC_CHANNEL_1);
-  alarm_state = ALARM_OFF;
-  alarmSecond = 0;
+  alarm_obj.active = false;
+  alarm_obj.seconds = ALARM_TIMEOUT;
 }
 
 // Actualiza timer, transcurrido un segundo
 timer_state_t refreshTimer()
 {
   // Apagar alarma si corresponde
-  if(alarm_state == ALARM_ON && alarmSecond >= ALARM_TIMEOUT) stopAlarm();
+  if(alarm_obj.active == true && alarm_obj.seconds <= 0) stopAlarm();
 
   // Actualizar timer
   scoreboard.timer.value.ss--;
   if (scoreboard.timer.value.mm == 0 && scoreboard.timer.value.ss == 0)
   {
     if(game_state == HALFTIME){
-      // Detener y resetearlo el timer si finalizó el descanso
+      // Detener y resetear el timer si finalizó el descanso
       timerStop(Timer0_cfg);
       timerWrite(Timer0_cfg, 0);
       return FINISHED;
@@ -537,6 +540,11 @@ timer_state_t refreshTimer()
       scoreboard.timer.value.mm--;
     }
   }
+  else if(game_state != HALFTIME && scoreboard.timer.value.mm == 0 && scoreboard.timer.value.ss == 10){
+    // A los 10 segundos vuelve a sonar la alarma
+    alarm_obj.enabled = true;
+    startAlarm();
+  }
   return RUNNING;
 }
 
@@ -549,7 +557,7 @@ void startTimer()
     timerStart(Timer0_cfg);
     timer_state = RUNNING;
 
-    if(game_state == IN_PROGRESS) startAlarm();
+    if(alarm_obj.enabled == true) startAlarm();
   }
 }
 
@@ -561,7 +569,7 @@ void stopTimer()
     timerStop(Timer0_cfg);
     timer_state = STOPPED;
 
-    if(alarm_state == ALARM_ON) stopAlarm();
+    if(alarm_obj.active == true) stopAlarm();
   }
 }
 
@@ -576,8 +584,10 @@ void resetTimer()
   timerWrite(Timer0_cfg, 0);
   timer_state = STOPPED;
   game_state = IN_PROGRESS;
-  
+
+  // Se detiene alarma y se habilita para futuro uso
   stopAlarm();
+  alarm_obj.enabled = true;
 }
 
 // Setear valor en timer
@@ -641,7 +651,9 @@ void resetScoreboard()
   timer_state = STOPPED;
   game_state = IN_PROGRESS;
 
+  // Se detiene alarma y se habilita para futuro uso
   stopAlarm();
+  alarm_obj.enabled = true;
 }
 
 // Actualizar datos en tablero, enviando los datos por serial a placa controladora
