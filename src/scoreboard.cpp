@@ -7,7 +7,7 @@
 /***************************************************************************/
 /******************************** DEFINES **********************************/
 #define MAX_CONNECTIONS 1
-#define WIFI_TIMEOUT 30
+#define WIFI_TIMEOUT 60
 #define BELL_COUNT 4
 #define LOG_TO_CONSOLE 1
 
@@ -27,12 +27,13 @@ bool timerValueUpdate = false;
 bool cmdReceived = false;
 
 // AP - WiFi
-IPAddress local_IP(192, 168, 4, 5);
-IPAddress gateway(192, 168, 4, 5);
+IPAddress local_IP(192, 168, 1, 5);
+IPAddress gateway(192, 168, 1, 1);
 IPAddress subnet(255, 255, 255, 0);
 IPAddress primaryDNS(8, 8, 8, 8);   //optional
 IPAddress secondaryDNS(8, 8, 4, 4); //optional
 const char *ssid = "PoloPoints";
+const char *ssid_ap = "PoloPoints-AP";
 const char *password = "12345678";
 int wifi_timeout_counter = 0;
 AsyncWebServer server(80);
@@ -731,7 +732,7 @@ void wifiSetApp(void){
       if(LOG_TO_CONSOLE) Serial.println("WiFi App Mode set.");
       WiFi.mode(WIFI_AP);
       WiFi.softAPConfig(local_IP, gateway, subnet);
-      if (!WiFi.softAP(ssid, password, 1, false, MAX_CONNECTIONS)) wifi_state = CONNECTION_ERROR;
+      if (!WiFi.softAP(ssid_ap, password, 1, false, MAX_CONNECTIONS)) wifi_state = CONNECTION_ERROR;
       else wifi_state = CONNECTED;
       break;
     case CONNECTED:
