@@ -75,8 +75,8 @@ struct scoreboard_t{
   int chukker = 1;
   struct __timer_t
   {
-    _timer_t value = { 6,30 };
-    _timer_t initValue = { 6,30 };  // se usa para el comando reset_timer
+    _timer_t value = { 7,00 };
+    _timer_t initValue = { 7,00 };  // se usa para el comando reset_timer
     _timer_t halftime = { 3,0 };    // 3' 0'' de descanso en intervalos
   } timer;
 } scoreboard;
@@ -97,6 +97,7 @@ timer_state_t timer_state = STOPPED;
 
 enum game_state_t{
   IN_PROGRESS,
+  EXTENDED_TIME,
   HALFTIME
 };
 game_state_t game_state = IN_PROGRESS;
@@ -537,16 +538,23 @@ timer_state_t refreshTimer()
   scoreboard.timer.value.ss--;
   if (scoreboard.timer.value.mm == 0 && scoreboard.timer.value.ss == 0)
   {
-    if(game_state == HALFTIME){
-      // Detener y resetear el timer si finalizó el descanso
-      timerStop(Timer0_cfg);
-      timerWrite(Timer0_cfg, 0);
-      return FINISHED;
+    if(game_state == IN_PROGRESS){
+      game_state = EXTENDED_TIME;
+      scoreboard.timer.value.ss = 30;
+      alarm_obj.enabled = true;
+      startAlarm();
     }
-    else{
+    else if(game_state == EXTENDED_TIME){
       game_state = HALFTIME;
       scoreboard.timer.value.mm = scoreboard.timer.halftime.mm;
       scoreboard.timer.value.ss = scoreboard.timer.halftime.ss;
+    }
+    else{ // HALFTIME
+      // Detener y resetear el timer si finalizó el descanso
+      scoreboard.chukker++;
+      timerStop(Timer0_cfg);
+      timerWrite(Timer0_cfg, 0);
+      return FINISHED;
     }
   }
   else if (scoreboard.timer.value.ss < 0)
@@ -558,8 +566,8 @@ timer_state_t refreshTimer()
       scoreboard.timer.value.mm--;
     }
   }
-  else if(game_state != HALFTIME && scoreboard.timer.value.mm == 0 && scoreboard.timer.value.ss == 10){
-    // A los 10 segundos vuelve a sonar la alarma
+  else if(game_state != HALFTIME && scoreboard.timer.value.mm == 0 && scoreboard.timer.value.ss == 30){
+    // A los 30 segundos vuelve a sonar la alarma
     alarm_obj.enabled = true;
     startAlarm();
   }
