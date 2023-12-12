@@ -7,12 +7,12 @@ const STATUS = {
 };
 const timerStatus = {
     STOPPED: 0,
-    RUNNING: 1,
-    FINISHED: 2
+    RUNNING: 1
 }
 const gameStatus = {
     IN_PROGRESS: 0,
-    HALFTIME: 1
+    EXTENDED_TIME: 1,
+    HALFTIME: 2
 }
 const REQUEST_PERIOD = 250;
 
@@ -219,7 +219,7 @@ async function refreshScoreboard() {
         const response = await rawResponse.text();
         setScoreboardValues(response);
         setOptions();
-        if (timerState === timerStatus.STOPPED || timerState === timerStatus.FINISHED) { stopAutoRequest(); }
+        if (timerState === timerStatus.STOPPED) { stopAutoRequest(); }
     }
 }
 
@@ -261,7 +261,7 @@ async function sendTimerData(mm, ss, cmd) {
 
 // Fijar opciones en front-end segun estado de timer
 function setOptions() {
-    if (gameState === gameStatus.IN_PROGRESS) { intervalMark.hidden = true; }
+    if (gameState != gameStatus.HALFTIME) { intervalMark.hidden = true; }
     else { intervalMark.hidden = false; }
     if (timerState === timerStatus.STOPPED) {
         btnStopTimer.disabled = true;

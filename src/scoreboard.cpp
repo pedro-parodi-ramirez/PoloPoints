@@ -90,8 +90,7 @@ main_state_t main_state = INIT;
 
 enum timer_state_t{
   STOPPED,
-  RUNNING,
-  FINISHED
+  RUNNING
 };
 timer_state_t timer_state = STOPPED;
 
@@ -552,9 +551,8 @@ timer_state_t refreshTimer()
     else{ // HALFTIME
       // Detener y resetear el timer si finalizó el descanso
       scoreboard.chukker++;
-      timerStop(Timer0_cfg);
-      timerWrite(Timer0_cfg, 0);
-      return FINISHED;
+      resetTimer();
+      return STOPPED;
     }
   }
   else if (scoreboard.timer.value.ss < 0)
@@ -615,7 +613,7 @@ void resetTimer()
 
 // Setear valor en timer
 bool setTimerValue(int mm, int ss, int action){
-  if(timer_state == RUNNING || timer_state == FINISHED){ return false; }
+  if(timer_state == RUNNING){ return false; }
   else if(mm == 0 && ss == 0){ return false; }
   else if(mm < 0 || mm > 59){ return false; }
   else if(ss < 0 || ss > 59){ return false; }
