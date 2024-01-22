@@ -31,7 +31,7 @@ const btnUpMinute = document.getElementById('up-minute');
 const btnDownMinute = document.getElementById('down-minute');
 const btnUpSecond = document.getElementById('up-second');
 const btnDownSecond = document.getElementById('down-second');
-const IP = "192.168.1.5";
+const DOMAIN = "polopoints.local";
 let refreshTimer = null;
 const localValue = document.getElementById('local');
 const visitorValue = document.getElementById('visitor');
@@ -74,7 +74,7 @@ const dataIndex = {
 
 // Visitor
 btnUpVisitor.addEventListener('click', async () => {
-    const rawResponse = await fetch(`http://${IP}/score?cmd=${command.INC_SCORE_VISITOR}`);
+    const rawResponse = await fetch(`http://${DOMAIN}/score?cmd=${command.INC_SCORE_VISITOR}`);
     if (rawResponse.status === STATUS.ACCEPTED) {
         const response = await rawResponse.text();
         setScoreboardValues(response);
@@ -82,7 +82,7 @@ btnUpVisitor.addEventListener('click', async () => {
 });
 
 btnDownVisitor.addEventListener('click', async () => {
-    const rawResponse = await fetch(`http://${IP}/score?cmd=${command.DEC_SCORE_VISITOR}`);
+    const rawResponse = await fetch(`http://${DOMAIN}/score?cmd=${command.DEC_SCORE_VISITOR}`);
     if (rawResponse.status === STATUS.ACCEPTED) {
         const response = await rawResponse.text();
         setScoreboardValues(response);
@@ -91,7 +91,7 @@ btnDownVisitor.addEventListener('click', async () => {
 
 // Local
 btnUpLocal.addEventListener('click', async () => {
-    const rawResponse = await fetch(`http://${IP}/score?cmd=${command.INC_SCORE_LOCAL}`);
+    const rawResponse = await fetch(`http://${DOMAIN}/score?cmd=${command.INC_SCORE_LOCAL}`);
     if (rawResponse.status === STATUS.ACCEPTED) {
         const response = await rawResponse.text();
         setScoreboardValues(response);
@@ -99,7 +99,7 @@ btnUpLocal.addEventListener('click', async () => {
 });
 
 btnDownLocal.addEventListener('click', async () => {
-    const rawResponse = await fetch(`http://${IP}/score?cmd=${command.DEC_SCORE_LOCAL}`);
+    const rawResponse = await fetch(`http://${DOMAIN}/score?cmd=${command.DEC_SCORE_LOCAL}`);
     if (rawResponse.status === STATUS.ACCEPTED) {
         const response = await rawResponse.text();
         setScoreboardValues(response);
@@ -108,7 +108,7 @@ btnDownLocal.addEventListener('click', async () => {
 
 // chukker
 btnUpChukker.addEventListener('click', async () => {
-    const rawResponse = await fetch(`http://${IP}/chukker?cmd=${command.INC_CHUKKER}`);
+    const rawResponse = await fetch(`http://${DOMAIN}/chukker?cmd=${command.INC_CHUKKER}`);
     if (rawResponse.status === STATUS.ACCEPTED) {
         const response = await rawResponse.text();
         setScoreboardValues(response);
@@ -116,7 +116,7 @@ btnUpChukker.addEventListener('click', async () => {
 });
 
 btnDownChukker.addEventListener('click', async () => {
-    const rawResponse = await fetch(`http://${IP}/chukker?cmd=${command.DEC_CHUKKER}`);
+    const rawResponse = await fetch(`http://${DOMAIN}/chukker?cmd=${command.DEC_CHUKKER}`);
     if (rawResponse.status === STATUS.ACCEPTED) {
         const response = await rawResponse.text();
         setScoreboardValues(response);
@@ -130,7 +130,7 @@ btnStartTimer.addEventListener('click', async () => {
         return;
     }
     else {
-        const rawResponse = await fetch(`http://${IP}/timer?cmd=${command.START_TIMER}`);
+        const rawResponse = await fetch(`http://${DOMAIN}/timer?cmd=${command.START_TIMER}`);
 
         if (rawResponse.status === STATUS.ACCEPTED) {
             if (refreshTimer === null) { startAutoRequest(); }
@@ -141,7 +141,7 @@ btnStartTimer.addEventListener('click', async () => {
 
 btnStopTimer.addEventListener('click', async () => {
     if (timerState === timerStatus.RUNNING) {
-        const rawResponse = await fetch(`http://${IP}/timer?cmd=${command.STOP_TIMER}`);
+        const rawResponse = await fetch(`http://${DOMAIN}/timer?cmd=${command.STOP_TIMER}`);
         if (rawResponse.status !== STATUS.ACCEPTED) { alert('Something went wrong.'); }
     }
 });
@@ -178,7 +178,7 @@ btnSetDefaultTimer.addEventListener('click', async () => {
 });
 
 btnResetTimer.addEventListener('click', async () => {
-    const rawResponse = await fetch(`http://${IP}/timer?cmd=${command.RESET_TIMER}`);
+    const rawResponse = await fetch(`http://${DOMAIN}/timer?cmd=${command.RESET_TIMER}`);
     if (rawResponse.status === STATUS.ACCEPTED) {
         const response = await rawResponse.text();
         setScoreboardValues(response);
@@ -190,7 +190,7 @@ btnResetTimer.addEventListener('click', async () => {
 
 // Reset all
 btnResetAll.addEventListener('click', async () => {
-    const rawResponse = await fetch(`http://${IP}/reset`);
+    const rawResponse = await fetch(`http://${DOMAIN}/reset`);
     if (rawResponse.status === STATUS.ACCEPTED) {
         const response = await rawResponse.text();
         setScoreboardValues(response);
@@ -214,7 +214,7 @@ window.addEventListener('load', async () => {
 
 // Solicitar datos y refrescar el tablero
 async function refreshScoreboard() {
-    const rawResponse = await fetch(`http://${IP}/scoreboard`);
+    const rawResponse = await fetch(`http://${DOMAIN}/scoreboard`);
     if (rawResponse.status === STATUS.OK) {
         const response = await rawResponse.text();
         setScoreboardValues(response);
@@ -250,7 +250,7 @@ function setScoreboardValues(dataString) {
 
 // Enviar valores de timer a servidor
 async function sendTimerData(mm, ss, cmd) {
-    const rawResponse = await fetch(`http://${IP}/timer/set?mm=${mm}&ss=${ss}&cmd=${cmd}}`);
+    const rawResponse = await fetch(`http://${DOMAIN}/timer/set?mm=${mm}&ss=${ss}&cmd=${cmd}}`);
     if (rawResponse.status === STATUS.ACCEPTED) {
         const response = await rawResponse.text();
         setScoreboardValues(response);

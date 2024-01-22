@@ -1,4 +1,5 @@
 #include "WiFi.h"
+#include "ESPmDNS.h"
 #include "ESPAsyncWebServer.h"
 #include "SPIFFS.h"
 #include "driver/dac.h"
@@ -7,9 +8,8 @@
 /***************************************************************************/
 /******************************** DEFINES **********************************/
 #define MAX_CONNECTIONS 1
-#define WIFI_TIMEOUT 60
 #define BELL_COUNT 4
-#define LOG_TO_CONSOLE 1
+#define LOG_TO_CONSOLE 0
 
 /***************************************************************************/
 /******************************** GLOBAL ***********************************/
@@ -30,12 +30,9 @@ bool cmdReceived = false;
 IPAddress local_IP(192, 168, 1, 5);
 IPAddress gateway(192, 168, 1, 1);
 IPAddress subnet(255, 255, 255, 0);
-IPAddress primaryDNS(8, 8, 8, 8);   //optional
-IPAddress secondaryDNS(8, 8, 4, 4); //optional
 const char *ssid = "PoloPoints";
-const char *ssid_ap = "PoloPoints-AP";
+const char *dnsDomain = "polopoints";
 const char *password = "12345678";
-int wifi_timeout_counter = 0;
 AsyncWebServer server(80);
 
 // Audio
@@ -50,15 +47,6 @@ hw_timer_t *Timer1_cfg = NULL;
 
 /***************************************************************************/
 /****************************** DATA TYPES *********************************/
-enum wifi_state_t{
-  CLIENT_MODE,
-  CONNECTING,
-  CONNECTED,
-  AP_MODE,
-  CONNECTION_ERROR
-};
-wifi_state_t wifi_state = CLIENT_MODE;
-
 struct alarm_t{
   bool active = false;
   bool enabled = true;
@@ -165,13 +153,11 @@ void resetScoreboard();
 void setDataFrameHeaders(byte *dataFrame);
 void refreshScoreboard(scoreboard_t *scoreboard, byte *dataFrame, byte *bufferTx);
 String getScoreboard_toString();
-void wifiSetApp(void);
 
 /***************************************************************************/
 /****************************** IRQ_HANDLERS *******************************/
 void IRAM_ATTR Timer0_ISR()
 {
-  if(wifi_state == CONNECTING) wifi_timeout_counter++;
   if(timer_state == RUNNING) timerValueUpdate = true;
 }
 
@@ -210,21 +196,26 @@ void setup()
   dac_output_disable(DAC_CHANNEL_1);
 
   /****************************** WIFI - AP **********************************/
-  while(1){
-    wifiSetApp();
-    if(wifi_state == CONNECTED) break;
-    delay(500);
+  if(LOG_TO_CONSOLE) Serial.println("Setting WiFi App Mode ...");
+  WiFi.softAPConfig(local_IP, gateway, subnet);
+  if (!WiFi.softAP(ssid, password, 1, false, MAX_CONNECTIONS)){
+    if(LOG_TO_CONSOLE) Serial.println("\nError setting WiFi App. Rebooting ...");
+    ESP.restart();
+  }
+
+  // Set DNS server
+  if(!MDNS.begin(dnsDomain)){
+    if(LOG_TO_CONSOLE) Serial.println("\nError setting DNS server. Rebooting ...");
+    ESP.restart();
   }
   
-  // Se frena timer y reinicia timer (usado para wifi-setting y luego para tablero)
-  timerStop(Timer0_cfg);
-  timerWrite(Timer0_cfg, 0);
-
   // Inicializar SPIFFS
   if (!SPIFFS.begin(true)){
     if(LOG_TO_CONSOLE){ Serial.println("Something went wrong mountint SPIFFS."); }
     return;
   }
+
+  MDNS.addService("http", "tcp", 80);
   /***************************************************************************/
   /***************************** HTTP REQUEST ********************************/
   // Ruta a index.html
@@ -710,48 +701,4 @@ String getScoreboard_toString(){
   s += "," + String(timer_state);
   s += "," + String(game_state);
   return s;
-}
-
-// Maquina de estados para conectividad WiFi (ESP32 modo cliente o modo AP)
-void wifiSetApp(void){
-  switch(wifi_state){
-    case CLIENT_MODE:
-      // modo cliente
-      if(LOG_TO_CONSOLE) Serial.println("WiFi Client Mode. Connecting ...");
-      WiFi.mode(WIFI_STA);
-      WiFi.config(local_IP, gateway, subnet, primaryDNS, secondaryDNS);
-      WiFi.begin(ssid, password);
-      wifi_timeout_counter = 0;
-      wifi_state = CONNECTING;
-      break;
-    case CONNECTING:
-      if(WiFi.status() != WL_CONNECTED){
-        if(wifi_timeout_counter >= WIFI_TIMEOUT){
-          if(LOG_TO_CONSOLE) Serial.println("WiFi Client Mode failed ...\nSwitching to AP Mode.");
-          wifi_state = AP_MODE;
-        }
-      }
-      else wifi_state = CONNECTED;
-      break;
-    case AP_MODE:
-      // modo AP
-      if(LOG_TO_CONSOLE) Serial.println("WiFi App Mode set.");
-      WiFi.mode(WIFI_AP);
-      WiFi.softAPConfig(local_IP, gateway, subnet);
-      if (!WiFi.softAP(ssid_ap, password, 1, false, MAX_CONNECTIONS)) wifi_state = CONNECTION_ERROR;
-      else wifi_state = CONNECTED;
-      break;
-    case CONNECTED:
-      if(LOG_TO_CONSOLE){
-        Serial.print("WiFi App set correctly.\nIP address: ");
-        Serial.println(WiFi.localIP());
-      }
-      break;
-    case CONNECTION_ERROR:
-      if(LOG_TO_CONSOLE) Serial.println("\nError setting WiFi App. Retrying ...");
-      break;
-    default:
-      wifi_state = CONNECTION_ERROR;
-      break;
-  }
 }
