@@ -17,7 +17,7 @@ El proyecto administra una campana sonora para distintos eventos de cada chukker
 El front-end incorpora un indicador de conectividad, en caso de exceder el límite del alcance de la señal WiFi del tablero (aprox. 100mts).
 
 ## Imágenes de referencia
-|  ![scoreboard](../public/board.png) |  ![app-movil](../public/app.jpeg) |
+|  ![scoreboard](./public/board.png) |  ![app-movil](./public/app.jpeg) |
 |-------------------------------------|-----------------------------------|
 
 ## IDE
