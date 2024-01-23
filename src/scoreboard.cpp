@@ -16,7 +16,7 @@
 const byte DATA_FRAME_ROWS = 20;   // Filas de la matriz dataFrame a enviar a placa controladora. Filas -> header, comando, dato, ...
 const byte DAC_SAMPLE_VALUES = 100;
 const int TICKS_FOR_DAC_TIMER = 312; // TICKS_FOR_DAC_TIMER = 80MHz / (wav_file_sample_rate / 8)
-const byte TX_MAX_LONG = 50;
+const byte TX_MAX_LENGHT = 50;
 const byte DOT_VALUE = 0x80;
 const int SECOND_IN_MICROS = 1000000;
 const byte DECREASE = 0;
@@ -27,9 +27,9 @@ bool timerValueUpdate = false;
 bool cmdReceived = false;
 
 // AP - WiFi
-IPAddress local_IP(192, 168, 1, 5);
-IPAddress gateway(192, 168, 1, 1);
-IPAddress subnet(255, 255, 255, 0);
+//IPAddress local_IP(192, 168, 1, 5);
+//IPAddress gateway(192, 168, 1, 1);
+//IPAddress subnet(255, 255, 255, 0);
 const char *ssid = "PoloPoints";
 const char *dnsDomain = "polopoints";
 const char *password = "12345678";
@@ -197,7 +197,8 @@ void setup()
 
   /****************************** WIFI - AP **********************************/
   if(LOG_TO_CONSOLE) Serial.println("Setting WiFi App Mode ...");
-  WiFi.softAPConfig(local_IP, gateway, subnet);
+  WiFi.mode(WIFI_AP);
+  //WiFi.softAPConfig(local_IP, gateway, subnet); // Antes no ocasionaba errores, pero ahora genera reconexiones constantemente
   if (!WiFi.softAP(ssid, password, 1, false, MAX_CONNECTIONS)){
     if(LOG_TO_CONSOLE) Serial.println("\nError setting WiFi App. Rebooting ...");
     ESP.restart();
@@ -215,7 +216,7 @@ void setup()
     return;
   }
 
-  MDNS.addService("http", "tcp", 80);
+  //MDNS.addService("http", "tcp", 80);
   /***************************************************************************/
   /***************************** HTTP REQUEST ********************************/
   // Ruta a index.html
@@ -231,6 +232,11 @@ void setup()
   // Ruta a index.js
   server.on("/index.js", HTTP_GET, [](AsyncWebServerRequest *request){
     request->send(SPIFFS, "/index.js", "text/html");
+  });
+
+  // Ruta a worker.js
+  server.on("/worker.js", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(SPIFFS, "/worker.js", "text/html");
   });
 
   // Timer
@@ -391,6 +397,12 @@ void setup()
     request->send(STATUS_OK, "text/plain", data);
   });
 
+  // Solicitud para corroborar conexión
+  server.on("/ping", HTTP_GET, [](AsyncWebServerRequest *request){
+    if(LOG_TO_CONSOLE){ Serial.println("HTTP ping received ..."); }
+    request->send(STATUS_OK);
+  });
+
   // Rutas no definidas
   server.onNotFound([](AsyncWebServerRequest *request){
     if(LOG_TO_CONSOLE){ Serial.println("Request for undefined route."); }
@@ -404,7 +416,7 @@ void setup()
 /************************************************************ INFINITE LOOP ************************************************************/
 void loop()
 {
-  byte bufferTx[TX_MAX_LONG];
+  byte bufferTx[TX_MAX_LENGHT];
   byte dataFrame[DATA_FRAME_ROWS];
   //bool init = false;
   byte i;
@@ -538,6 +550,8 @@ timer_state_t refreshTimer()
       game_state = HALFTIME;
       scoreboard.timer.value.mm = scoreboard.timer.halftime.mm;
       scoreboard.timer.value.ss = scoreboard.timer.halftime.ss;
+      alarm_obj.enabled = true;
+      startAlarm();
     }
     else{ // HALFTIME
       // Detener y resetear el timer si finalizó el descanso

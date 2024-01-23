@@ -16,6 +16,7 @@ const gameStatus = {
 }
 const REQUEST_PERIOD = 250;
 
+const dotStatus = document.getElementById('dot-status');
 const btnUpVisitor = document.getElementById('up-visitor');
 const btnDownVisitor = document.getElementById('down-visitor');
 const btnUpLocal = document.getElementById('up-local');
@@ -41,6 +42,13 @@ const timerSSValue = document.getElementById('timer-ss');
 const intervalMark = document.getElementById('interval-mark');
 let timerState = timerStatus.STOPPED;
 let gameState = gameStatus.IN_PROGRESS;
+let worker = new Worker('worker.js');
+
+localValue.value = 1;
+chukkerValue.value = 2;
+visitorValue.value = 3;
+timerMMValue.value = 11;
+timerSSValue.value = 22;
 
 const command = {
     INC_SCORE_LOCAL: 1,
@@ -71,7 +79,6 @@ const dataIndex = {
 /* -------------------------------------------------------------------------------------------------------------- */
 /* -------------------------------------------------- EVENTS ---------------------------------------------------- */
 /* -------------------------------------------------------------------------------------------------------------- */
-
 // Visitor
 btnUpVisitor.addEventListener('click', async () => {
     const rawResponse = await fetch(`http://${DOMAIN}/score?cmd=${command.INC_SCORE_VISITOR}`);
@@ -126,13 +133,14 @@ btnDownChukker.addEventListener('click', async () => {
 // Timer
 btnStartTimer.addEventListener('click', async () => {
     if (parseInt(timerMMValue.value) === 0 && parseInt(timerSSValue.value) === 0) {
-        alert('Timer cannot be 00:00.');
+        alert('El timer no puede ser 00:00.');
         return;
     }
     else {
         const rawResponse = await fetch(`http://${DOMAIN}/timer?cmd=${command.START_TIMER}`);
 
         if (rawResponse.status === STATUS.ACCEPTED) {
+            worker.postMessage("stop-server-ping");
             if (refreshTimer === null) { startAutoRequest(); }
         }
         else { alert('Something went wrong.'); }
@@ -143,6 +151,7 @@ btnStopTimer.addEventListener('click', async () => {
     if (timerState === timerStatus.RUNNING) {
         const rawResponse = await fetch(`http://${DOMAIN}/timer?cmd=${command.STOP_TIMER}`);
         if (rawResponse.status !== STATUS.ACCEPTED) { alert('Something went wrong.'); }
+        else{ worker.postMessage("start-server-ping"); }
     }
 });
 
@@ -173,7 +182,7 @@ btnDownSecond.addEventListener('click', async () => {
 btnSetDefaultTimer.addEventListener('click', async () => {
     let mmValue = parseInt(timerMMValue.value);
     let ssValue = parseInt(timerSSValue.value);
-    if (mmValue === 0 && ssValue === 0) { alert('Timer cannot be 00:00.'); }
+    if (mmValue === 0 && ssValue === 0) { alert('El timer no puede ser 00:00.'); }
     else { sendTimerData(mmValue, ssValue, command.SET_DEFAULT_TIMER); }
 });
 
@@ -196,9 +205,25 @@ btnResetAll.addEventListener('click', async () => {
         setScoreboardValues(response);
         setOptions();
         stopAutoRequest();
+        worker.postMessage("start-server-ping");
     }
     else { alert('Something went wrong.'); }
 });
+
+// Ping events
+worker.addEventListener('message', function(e) {
+    switch(e.data){
+        case "connected":
+            dotStatus.style.backgroundColor = "#32CD32";
+            break;
+        case "disconnected":
+            dotStatus.style.backgroundColor = "red";
+            break;
+        default:
+            dotStatus.style.backgroundColor = "red";
+            break;
+    }
+  })
 
 /* -------------------------------------------------------------------------------------------------------------- */
 /* --------------------------------------------------- MAIN ----------------------------------------------------- */
@@ -208,18 +233,29 @@ btnResetAll.addEventListener('click', async () => {
 window.addEventListener('load', async () => {
     await refreshScoreboard();
     if (timerState === timerStatus.RUNNING) {
+        worker.postMessage("stop-server-ping");
         if (refreshTimer === null) { startAutoRequest(); }
     }
+    else { worker.postMessage("start-server-ping"); }
 });
 
 // Solicitar datos y refrescar el tablero
 async function refreshScoreboard() {
-    const rawResponse = await fetch(`http://${DOMAIN}/scoreboard`);
-    if (rawResponse.status === STATUS.OK) {
-        const response = await rawResponse.text();
-        setScoreboardValues(response);
-        setOptions();
-        if (timerState === timerStatus.STOPPED) { stopAutoRequest(); }
+    try{
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), RESPONSE_TIMEOUT);
+        const rawResponse = await fetch(`http://${DOMAIN}/scoreboard`, { signal: controller.signal });
+        if (rawResponse.status === STATUS.OK) {
+            const response = await rawResponse.text();
+            setScoreboardValues(response);
+            setOptions();
+            if (timerState === timerStatus.STOPPED) { stopAutoRequest(); }
+        }
+        dotStatus.style.backgroundColor = "#32CD32";
+        clearInterval(timeoutId);
+    }
+    catch(error){
+        dotStatus.style.backgroundColor = "red";
     }
 }
 
@@ -255,7 +291,7 @@ async function sendTimerData(mm, ss, cmd) {
         const response = await rawResponse.text();
         setScoreboardValues(response);
         setOptions();
-        if (cmd === command.SET_DEFAULT_TIMER) { alert('Timer updated.'); }
+        if (cmd === command.SET_DEFAULT_TIMER) { alert('Valor default del timer actualizado.'); }
     }
 }
 

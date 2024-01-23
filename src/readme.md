@@ -1,24 +1,24 @@
 # Polo Points
-Programa para ESP32 que administra un tablero de LEDs deportivo pensado para Polo. La comunicación con este es serial RS232, a través de una placa controladora del tablero de LEDs.
-La app permite administrar puntajes local y visitante, chukker y temporizador. El dispositivo ESP32 implementa además un servidor WiFi con modalidad access point que administra distintas consultas para interactuar con el tablero. Se ofrece también un front-end sencillo (archivo html) en la dirección del host para probar la funcionalidad del programa. Los datos de la red son los siguientes:
-* IP: 192.168.1.5
-* Dominio: **polopoints** &rarr; posibilidad de acceder a través de servidor DNS
-* SSID: Polo Points
-* PASS: 12345678
+App para administrar un tablero de LEDs deportivo pensado para Polo, a través de una interfaz WiFi. La app permite administrar puntajes local y visitante, chukker y temporizador.
 
-Es posible incrementar/decrementar puntajes (local y visitante) y chuker.
+El proyecto está implementado con un dispositivo ESP32, que genera por WiFi un access point (AP), administra las solicitudes HTTP, se comunica a través de RS232 con la placa controladora de LEDs y gestiona el uso de una alarma sonora.
 
-El reloj puede iniciarse, frenarse o resetarse, como así también modificar su valor actual o el default. Programado inicialmente para iniciar los 6:30 minutos de cada chukker y los 3 minutos de descanso entre chukkers.
+Se ofrece también un front-end en la dirección del host para utilizar las funcionalidades de aplicación.
 
-Es posible reiniciar todo el tablero a sus valores default.
+Los datos de la red son los siguientes:
+* **Dominio**: 'polopoints.local' &rarr; se accede mediante este dominio dado que la IP puede variar.
+* **SSID**: 'PoloPoints'
+* **PASS**: '12345678'
 
-## Instalación
+Es posible incrementar/decrementar puntajes (local y visitante) y chuker. El temporizador puede iniciarse, frenarse o resetarse, como así también modificar su valor actual o el default. Programado inicialmente en valores estándar de Polo: 7' cada chukker con 30'' adicionales sobre el final (total 7' 30'') y los 3' de descanso entre chukkers.
+
+El proyecto administra una campana sonora para distintos eventos de cada chukker. Esto haciendo uso del DAC incorporado en el ES32 y un amplificador de audio externo.
+
+El front-end incorpora un indicador de conectividad, en caso de exceder el límite del alcance de la señal WiFi del tablero (aprox. 100mts).
+
+## Imágenes de referencia
+|  ![scoreboard](../public/board.png) |  ![app-movil](../public/app.jpeg) |
+|-------------------------------------|-----------------------------------|
+
+## IDE
 Proyecto desarrollado inicialmente en el IDE de Arduino y luego migrado a Visual Studio Code, mediante la extensión Platform IO.
-Es necesario instalar la herramienta ESP-IDF para poder agregar la dependencia **mDNS** (servidos DNS).
-* [esp32/api-reference/protocols/mdns](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/protocols/mdns.html)
-* [Instalación ESP-IDF](https://github.com/espressif/vscode-esp-idf-extension/blob/master/docs/tutorial/install.md)
-
-Ejecutar desde una terminal ESP-IDF (accesible desde VSCode):
-```
-idf.py add-dependency espressif/mdns
-```
