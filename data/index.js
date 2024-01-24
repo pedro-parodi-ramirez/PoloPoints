@@ -39,7 +39,7 @@ const visitorValue = document.getElementById('visitor');
 const chukkerValue = document.getElementById('chukker');
 const timerMMValue = document.getElementById('timer-mm');
 const timerSSValue = document.getElementById('timer-ss');
-const intervalMark = document.getElementById('interval-mark');
+const gameStateTitle = document.getElementById('game-state-title');
 let timerState = timerStatus.STOPPED;
 let gameState = gameStatus.IN_PROGRESS;
 let worker = new Worker('worker.js');
@@ -62,8 +62,9 @@ const command = {
     RESET_TIMER: 9,
     SET_CURRENT_TIMER: 10,
     SET_DEFAULT_TIMER: 11,
-    SET_HALFTIME_TIMER: 12,
-    RESET_ALL: 13
+    SET_EXTENDED_TIMER: 12,
+    SET_HALFTIME_TIMER: 13,
+    RESET_ALL: 14
 };
 
 const dataIndex = {
@@ -119,6 +120,7 @@ btnUpChukker.addEventListener('click', async () => {
     if (rawResponse.status === STATUS.ACCEPTED) {
         const response = await rawResponse.text();
         setScoreboardValues(response);
+        if(gameState === gameStatus.IN_PROGRESS) gameStateTitle.innerText = "CHUKKER " + chukkerValue.value;
     }
 });
 
@@ -127,6 +129,7 @@ btnDownChukker.addEventListener('click', async () => {
     if (rawResponse.status === STATUS.ACCEPTED) {
         const response = await rawResponse.text();
         setScoreboardValues(response);
+        if(gameState === gameStatus.IN_PROGRESS) gameStateTitle.innerText = "CHUKKER " + chukkerValue.value;
     }
 });
 
@@ -157,12 +160,14 @@ btnStopTimer.addEventListener('click', async () => {
 
 btnUpMinute.addEventListener('click', async () => {
     let mmValue = parseInt(timerMMValue.value) + 1;
+    if(mmValue > 59) mmValue = 0;
     let ssValue = parseInt(timerSSValue.value);
     sendTimerData(mmValue, ssValue, command.SET_CURRENT_TIMER);
 });
 
 btnDownMinute.addEventListener('click', async () => {
     let mmValue = parseInt(timerMMValue.value) - 1;
+    if(mmValue < 0) mmValue = 59;
     let ssValue = parseInt(timerSSValue.value);
     sendTimerData(mmValue, ssValue, command.SET_CURRENT_TIMER);
 });
@@ -170,12 +175,14 @@ btnDownMinute.addEventListener('click', async () => {
 btnUpSecond.addEventListener('click', async () => {
     let mmValue = parseInt(timerMMValue.value);
     let ssValue = parseInt(timerSSValue.value) + 1;
+    if(ssValue > 59) ssValue = 0;
     sendTimerData(mmValue, ssValue, command.SET_CURRENT_TIMER);
 });
 
 btnDownSecond.addEventListener('click', async () => {
     let mmValue = parseInt(timerMMValue.value);
     let ssValue = parseInt(timerSSValue.value) - 1;
+    if(ssValue < 0) ssValue = 59;
     sendTimerData(mmValue, ssValue, command.SET_CURRENT_TIMER);
 });
 
@@ -183,7 +190,19 @@ btnSetDefaultTimer.addEventListener('click', async () => {
     let mmValue = parseInt(timerMMValue.value);
     let ssValue = parseInt(timerSSValue.value);
     if (mmValue === 0 && ssValue === 0) { alert('El timer no puede ser 00:00.'); }
-    else { sendTimerData(mmValue, ssValue, command.SET_DEFAULT_TIMER); }
+    else {
+        switch(gameState){
+            case gameStatus.IN_PROGRESS:
+                sendTimerData(mmValue, ssValue, command.SET_DEFAULT_TIMER);
+                break;
+            case gameStatus.EXTENDED_TIME:
+                sendTimerData(mmValue, ssValue, command.SET_EXTENDED_TIMER);
+                break;
+            case gameStatus.HALFTIME:
+                sendTimerData(mmValue, ssValue, command.SET_HALFTIME_TIMER);
+                break;
+        }
+    }
 });
 
 btnResetTimer.addEventListener('click', async () => {
@@ -205,7 +224,6 @@ btnResetAll.addEventListener('click', async () => {
         setScoreboardValues(response);
         setOptions();
         stopAutoRequest();
-        worker.postMessage("start-server-ping");
     }
     else { alert('Something went wrong.'); }
 });
@@ -291,14 +309,31 @@ async function sendTimerData(mm, ss, cmd) {
         const response = await rawResponse.text();
         setScoreboardValues(response);
         setOptions();
-        if (cmd === command.SET_DEFAULT_TIMER) { alert('Valor default del timer actualizado.'); }
+        if (cmd === command.SET_DEFAULT_TIMER) { alert('Duración de chukker actualizado.'); }
+        if (cmd === command.SET_EXTENDED_TIMER) { alert('Tiempo extendido actualizado.'); }
+        if (cmd === command.SET_HALFTIME_TIMER) { alert('Tiempo de intervalo actualizado.'); }
     }
 }
 
 // Fijar opciones en front-end segun estado de timer
 function setOptions() {
-    if (gameState != gameStatus.HALFTIME) { intervalMark.hidden = true; }
-    else { intervalMark.hidden = false; }
+    switch(gameState){
+        case gameStatus.IN_PROGRESS:
+            gameStateTitle.style.backgroundColor = "#9ACD32";
+            gameStateTitle.style.color = "black";
+            gameStateTitle.innerText = "CHUKKER " + chukkerValue.value;
+            break;
+        case gameStatus.HALFTIME:
+            gameStateTitle.style.backgroundColor = "#FFFACD";
+            gameStateTitle.style.color = "#FF6347";
+            gameStateTitle.innerText = "INTERVALO";
+            break;
+        case gameStatus.EXTENDED_TIME:
+            gameStateTitle.style.backgroundColor = "#87CEEB";
+            gameStateTitle.style.color = "#00008B";
+            gameStateTitle.innerText = "TIEMPO EXTENDIDO";
+            break;
+    }
     if (timerState === timerStatus.STOPPED) {
         btnStopTimer.disabled = true;
         btnStartTimer.disabled = false;
@@ -307,7 +342,9 @@ function setOptions() {
         btnUpSecond.disabled = false;
         btnDownSecond.disabled = false;
         btnResetTimer.disabled = false;
-        if (gameState === gameStatus.IN_PROGRESS) { btnSetDefaultTimer.disabled = false; }
+        btnSetDefaultTimer.disabled = false;
+        if(gameState ===  gameStatus.IN_PROGRESS)
+            worker.postMessage("start-server-ping");
     }
     else if (timerState === timerStatus.RUNNING) {
         btnStopTimer.disabled = false;
@@ -317,16 +354,6 @@ function setOptions() {
         btnUpSecond.disabled = true;
         btnDownSecond.disabled = true;
         btnResetTimer.disabled = true;
-        btnSetDefaultTimer.disabled = true;
-    }
-    else {
-        btnStopTimer.disabled = true;
-        btnStartTimer.disabled = true;
-        btnUpMinute.disabled = true;
-        btnDownMinute.disabled = true;
-        btnUpSecond.disabled = true;
-        btnDownSecond.disabled = true;
-        btnResetTimer.disabled = false;
         btnSetDefaultTimer.disabled = true;
     }
 }

@@ -64,8 +64,9 @@ struct scoreboard_t{
   struct __timer_t
   {
     _timer_t value = { 7,00 };
-    _timer_t initValue = { 7,00 };  // se usa para el comando reset_timer
-    _timer_t halftime = { 3,0 };    // 3' 0'' de descanso en intervalos
+    _timer_t initValue = { 7,00 };    // se usa para el comando reset_timer
+    _timer_t halftime = { 3,0 };      // 3' 0'' de descanso en intervalos
+    _timer_t extendedtime = { 0,30 };  // 30'' de tiempo exetendido
   } timer;
 } scoreboard;
 
@@ -101,8 +102,9 @@ enum command_t{
   RESET_TIMER         = 9,
   SET_CURRENT_TIMER   = 10,
   SET_DEFAULT_TIMER   = 11,
-  SET_HALFTIME_TIMER  = 12,
-  RESET_ALL           = 13
+  SET_EXTENDED_TIMER  = 12,
+  SET_HALFTIME_TIMER  = 13,
+  RESET_ALL           = 14
 };
 
 enum request_status_t{
@@ -243,7 +245,7 @@ void setup()
   server.on("/timer/set", HTTP_GET, [](AsyncWebServerRequest * request){
     const int paramQty = request->params();
     String data;
-    if(LOG_TO_CONSOLE){ Serial.println("Request to set timer value"); }
+    if(LOG_TO_CONSOLE){ Serial.println("Request to set timer value."); }
     if(paramQty < 3){
       if(LOG_TO_CONSOLE){ Serial.println("Not enought parameters."); }
       request->send(STATUS_BAD_REQUEST);
@@ -260,11 +262,15 @@ void setup()
     int ss = (p_1->value()).toInt();
     int cmd = (p_2->value()).toInt();
     if(setTimerValue(mm, ss, cmd)){
+      if(LOG_TO_CONSOLE){ Serial.println("Timer updated."); }
       data = getScoreboard_toString();
       request->send(STATUS_ACCEPTED, "text/plain", data);
       cmdReceived = true;
     }
-    else{ request->send(STATUS_BAD_REQUEST); }
+    else{
+      if(LOG_TO_CONSOLE){ Serial.println("Error: timer not updated."); }
+      request->send(STATUS_BAD_REQUEST);
+    }
   });
   
   server.on("/timer", HTTP_GET, [](AsyncWebServerRequest *request){
@@ -542,7 +548,8 @@ timer_state_t refreshTimer()
   {
     if(game_state == IN_PROGRESS){
       game_state = EXTENDED_TIME;
-      scoreboard.timer.value.ss = 30;
+      scoreboard.timer.value.mm = scoreboard.timer.extendedtime.mm;
+      scoreboard.timer.value.ss = scoreboard.timer.extendedtime.ss;
       alarm_obj.enabled = true;
       startAlarm();
     }
@@ -553,7 +560,7 @@ timer_state_t refreshTimer()
       alarm_obj.enabled = true;
       startAlarm();
     }
-    else{ // HALFTIME
+    else if(game_state == HALFTIME){
       // Detener y resetear el timer si finalizó el descanso
       scoreboard.chukker++;
       resetTimer();
@@ -631,6 +638,10 @@ bool setTimerValue(int mm, int ss, int action){
   else if (action == SET_CURRENT_TIMER){
     scoreboard.timer.value.mm = mm;
     scoreboard.timer.value.ss = ss;
+  }
+  else if (action == SET_EXTENDED_TIMER){
+    scoreboard.timer.extendedtime.mm = mm;
+    scoreboard.timer.extendedtime.ss = ss;
   }
   else if (action == SET_HALFTIME_TIMER){
     scoreboard.timer.halftime.mm = mm;

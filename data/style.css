@@ -35,11 +35,12 @@ h3{
   font-size: 1.2rem;
 }
 
-#interval-mark-title{
+#game-state-title{
   margin: 0px;
+  border-radius: 8px;
   padding: 4px 4px;
-  background-color: #FFFACD;
-  color: #FF6347;
+  background-color: #9ACD32;
+  color: black;
 }
 
 .row{
